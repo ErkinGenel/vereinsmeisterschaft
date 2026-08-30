@@ -733,7 +733,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-teal-200">
-      <header className="bg-teal-700 text-white shadow-md">
+      <header className="bg-teal-700 text-white shadow-md print:hidden">
         <div className="max-w-6xl mx-auto px-4 py-6">
           <div className="flex items-center gap-3">
             <Trophy className="w-8 h-8 text-yellow-400" />
@@ -747,7 +747,7 @@ export default function App() {
 
       <main className="max-w-6xl mx-auto px-4 py-8">
         
-        <div className="flex flex-wrap gap-2 mb-8 border-b border-slate-200 pb-2">
+        <div className="flex flex-wrap gap-2 mb-8 border-b border-slate-200 pb-2 print:hidden">
           <TabButton 
             active={activeTab === 'participants'} 
             onClick={() => setActiveTab('participants')}
@@ -1064,16 +1064,56 @@ export default function App() {
         {/* Tab Content: Schedule */}
         {activeTab === 'schedule' && timeSlots && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-6 print:hidden">
                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                  <Calendar className="text-teal-600" /> Offizieller Spielplan
                </h2>
-               <button onClick={() => window.print()} className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors hidden md:block">
+               <button onClick={() => window.print()} className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors hidden md:block print:hidden">
                  Plan Drucken
                </button>
             </div>
 
-            <div className="space-y-6 pb-20">
+            {/* Print View: Compact Table */}
+            <div className="hidden print:block">
+                <h2 className="text-2xl font-bold text-slate-800 mb-4 border-b border-slate-300 pb-2">
+                    Spielplan - Vereinsmeisterschaft
+                </h2>
+                <table className="w-full text-left text-sm border-collapse border border-slate-300">
+                    <thead>
+                        <tr className="bg-slate-200 print:bg-slate-200">
+                            <th className="border border-slate-300 p-2 font-bold">Zeit</th>
+                            <th className="border border-slate-300 p-2 font-bold text-center">Platz</th>
+                            <th className="border border-slate-300 p-2 font-bold">Kategorie</th>
+                            <th className="border border-slate-300 p-2 font-bold">Begegnung</th>
+                            <th className="border border-slate-300 p-2 font-bold">Ergebnis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {timeSlots.map(slot => (
+                            slot.matchIds.map(id => {
+                                const match = matchData[id];
+                                if (!match) return null;
+                                return (
+                                    <tr key={id} className="break-inside-avoid">
+                                        <td className="border border-slate-300 p-2 whitespace-nowrap">{slot.time} - {slot.endTime}</td>
+                                        <td className="border border-slate-300 p-2 text-center font-semibold">{match.court}</td>
+                                        <td className="border border-slate-300 p-2 font-medium">
+                                            {match.category} <span className="text-slate-500 font-normal">({match.type})</span>
+                                        </td>
+                                        <td className="border border-slate-300 p-2 break-words">
+                                            {match.player1} <span className="text-slate-400 italic px-2">vs</span> {match.player2}
+                                        </td>
+                                        <td className="border border-slate-300 p-2 font-bold text-center w-24">{match.score || ''}</td>
+                                    </tr>
+                                );
+                            })
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Web View: Interactive Cards */}
+            <div className="space-y-6 pb-20 print:hidden">
               {timeSlots.map((slot, index) => (
                 <div key={index} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                   <div className={`px-4 py-3 border-b flex items-center justify-between ${slot.slotType === 'final' ? 'bg-amber-100 border-amber-200' : 'bg-slate-100 border-slate-200'}`}>
@@ -1111,17 +1151,17 @@ export default function App() {
         {/* Tab Content: Brackets */}
         {activeTab === 'brackets' && tournamentStructures && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-6 print:hidden">
                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                  <Grid className="text-teal-600" /> Tabellen & Turnierbaum
                </h2>
-               <button onClick={() => window.print()} className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors hidden md:block">
+               <button onClick={() => window.print()} className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors hidden md:block print:hidden">
                  Drucken
                </button>
             </div>
 
             <div className="space-y-8 pb-20">
-              {categories.map(cat => {
+              {categories.map((cat, index) => {
                 const data = tournamentStructures[cat];
                 if (!data) return null;
                 
@@ -1130,24 +1170,24 @@ export default function App() {
                 const final = catMatches.find(m => m.stage === 'final' && (!m.koRound || m.koRound === 1));
 
                 return (
-                  <div key={cat} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 overflow-hidden">
+                  <div key={cat} className={`bg-white rounded-xl shadow-sm border border-slate-200 p-6 overflow-hidden print:break-after-page print:border-none print:shadow-none print:p-0 ${index > 0 ? 'print:pt-4' : ''}`}>
                     <h3 className="text-xl font-bold text-teal-700 mb-6 border-b pb-2 flex justify-between items-center">
                         {cat}
                         {data.type === 'knockout' && <span className="text-xs bg-teal-100 text-teal-800 px-2 py-1 rounded uppercase tracking-widest font-bold">K.O.-System</span>}
                     </h3>
                     
                     {data.type === 'knockout' ? (
-                        <div className="flex gap-4 items-center overflow-x-auto p-4 bg-slate-50/50 rounded-xl border border-slate-100 shadow-inner min-h-[300px]">
+                        <div className="flex gap-4 items-center overflow-x-auto p-4 bg-slate-50/50 rounded-xl border border-slate-100 shadow-inner min-h-[300px] print:bg-transparent print:border-none print:shadow-none">
                             {[...new Set(catMatches.filter(m => m.stage === 'ko').map(m => m.koRound))].sort((a,b)=>b-a).map(r => {
                                 const mInRound = catMatches.filter(m => m.koRound === r).sort((a,b)=>a.matchIndex - b.matchIndex);
                                 return (
                                     <div key={r} className="flex flex-col gap-6 justify-around min-w-[200px] h-full">
                                         {mInRound.map(m => (
-                                            <div key={m.id} className={`bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10 ${m.score === 'Freilos' ? 'opacity-50' : ''}`}>
+                                            <div key={m.id} className={`bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10 ${m.score === 'Freilos' ? 'opacity-50 print:opacity-100 print:border-dashed' : ''}`}>
                                                 <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">{m.name}</div>
-                                                <div className={`truncate p-1 rounded ${m.winner === m.player1 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700' : ''}`}>{m.player1}</div>
+                                                <div className={`break-words p-1 rounded ${m.winner === m.player1 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player1}</div>
                                                 <div className="border-t border-slate-100 my-1"></div>
-                                                <div className={`truncate p-1 rounded ${m.winner === m.player2 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700' : ''}`}>{m.player2}</div>
+                                                <div className={`break-words p-1 rounded ${m.winner === m.player2 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player2}</div>
                                             </div>
                                         ))}
                                     </div>
@@ -1155,16 +1195,16 @@ export default function App() {
                             })}
                             
                             {final && (
-                                <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl ml-4">
+                                <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl ml-4 print:bg-transparent print:border-2">
                                     <div className="text-center text-xs text-amber-600 font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
                                     <div className="bg-white border-2 border-amber-300 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800">
-                                        <div className={`truncate p-1 rounded ${final.winner === final.player1 ? 'bg-amber-100' : ''}`}>{final.player1}</div>
+                                        <div className={`break-words p-1 rounded ${final.winner === final.player1 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player1}</div>
                                         <div className="border-t border-slate-100 my-1"></div>
-                                        <div className={`truncate p-1 rounded ${final.winner === final.player2 ? 'bg-amber-100' : ''}`}>{final.player2}</div>
+                                        <div className={`break-words p-1 rounded ${final.winner === final.player2 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player2}</div>
                                     </div>
                                     {final.winner && (
                                         <div className="mt-3 text-center">
-                                            <span className="bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full font-bold shadow-sm">Sieger: {final.winner}</span>
+                                            <span className="bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full font-bold shadow-sm print:border print:border-amber-400 print:bg-transparent">Sieger: {final.winner}</span>
                                         </div>
                                     )}
                                 </div>
@@ -1182,12 +1222,12 @@ export default function App() {
                                   const groupMatchesForTable = catMatches.filter(m => m.stage === 'group' && m.groupName === gName);
 
                                   return (
-                                    <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden shadow-sm flex flex-col">
-                                      <div className="bg-slate-50 px-4 py-2 font-bold text-sm text-slate-700 border-b flex justify-between">
+                                    <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden shadow-sm flex flex-col print:break-inside-avoid">
+                                      <div className="bg-slate-50 px-4 py-2 font-bold text-sm text-slate-700 border-b flex justify-between print:bg-transparent">
                                         <span>{gName}</span>
                                       </div>
                                       
-                                      <div className="bg-slate-50 flex text-xs font-bold text-slate-500 border-b px-4 py-1.5">
+                                      <div className="bg-slate-50 flex text-xs font-bold text-slate-500 border-b px-4 py-1.5 print:bg-transparent">
                                         <div className="w-1/2">Spieler</div>
                                         <div className="flex w-1/2 justify-end gap-3 text-center">
                                           <div className="w-6" title="Siege">S</div>
@@ -1199,9 +1239,9 @@ export default function App() {
                                       <ul className="divide-y divide-slate-100 bg-white border-b border-slate-200">
                                         {standings.map((p, pIdx) => (
                                           <li key={pIdx} className="px-4 py-2.5 text-sm text-slate-800 flex justify-between items-center hover:bg-slate-50 transition-colors">
-                                            <span className="font-medium truncate w-1/2 pr-2">{pIdx + 1}. {p.name}</span>
+                                            <span className="font-medium break-words w-1/2 pr-2">{pIdx + 1}. {p.name}</span>
                                             <div className="flex w-1/2 justify-end gap-3 text-center font-mono">
-                                              <span className="w-6 font-bold text-teal-600 bg-teal-50 rounded">{p.wins}</span>
+                                              <span className="w-6 font-bold text-teal-600 bg-teal-50 rounded print:bg-transparent print:text-black">{p.wins}</span>
                                               <span className="w-10 text-slate-500 text-xs flex items-center justify-center">{p.gamesWon}:{p.gamesLost}</span>
                                               <span className={`w-8 font-medium text-xs flex items-center justify-center ${p.diff > 0 ? 'text-green-600' : p.diff < 0 ? 'text-red-500' : 'text-slate-400'}`}>
                                                 {p.diff > 0 ? '+' : ''}{p.diff}
@@ -1212,14 +1252,14 @@ export default function App() {
                                       </ul>
 
                                       {/* Gruppenspiele Liste */}
-                                      <div className="bg-slate-50 px-4 py-3 h-full">
+                                      <div className="bg-slate-50 px-4 py-3 h-full print:bg-transparent">
                                           <h5 className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider">Gruppenspiele</h5>
                                           <div className="space-y-1.5">
                                               {groupMatchesForTable.map(m => (
-                                                  <div key={m.id} className="text-xs flex justify-between items-center bg-white p-1.5 rounded border border-slate-200 shadow-sm">
-                                                      <span className={`truncate w-2/5 ${m.winner === m.player1 ? 'font-bold text-teal-700' : 'text-slate-600'}`}>{m.player1}</span>
-                                                      <span className="text-[10px] text-slate-400 font-mono text-center w-1/5 bg-slate-50 rounded px-1">{m.score || '-:-'}</span>
-                                                      <span className={`truncate w-2/5 text-right ${m.winner === m.player2 ? 'font-bold text-teal-700' : 'text-slate-600'}`}>{m.player2}</span>
+                                                  <div key={m.id} className="text-xs flex justify-between items-center bg-white p-1.5 rounded border border-slate-200 shadow-sm print:shadow-none print:border-b-0">
+                                                      <span className={`break-words w-[42%] ${m.winner === m.player1 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'}`}>{m.player1}</span>
+                                                      <span className="text-[10px] text-slate-400 font-mono text-center w-1/6 bg-slate-50 rounded px-1 print:bg-transparent print:text-black">{m.score || '-:-'}</span>
+                                                      <span className={`break-words w-[42%] text-right ${m.winner === m.player2 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'}`}>{m.player2}</span>
                                                   </div>
                                               ))}
                                           </div>
@@ -1233,40 +1273,40 @@ export default function App() {
                           
                           {/* Knockout */}
                           {(semis.length > 0 || final) && (
-                            <div className="flex-1 border-l border-slate-100 pl-0 lg:pl-8 mt-8 lg:mt-0">
-                              <h4 className="font-semibold text-slate-600 mb-4">K.O.-Runde</h4>
-                              <div className="flex gap-4 items-center h-full min-h-[200px] bg-slate-50/50 rounded-xl border border-slate-100 p-6 overflow-x-auto relative shadow-inner">
+                            <div className="flex-1 border-l border-slate-100 pl-0 lg:pl-8 mt-8 lg:mt-0 print:border-none print:pl-0">
+                              <h4 className="font-semibold text-slate-600 mb-4 print:hidden">K.O.-Runde</h4>
+                              <div className="flex gap-4 items-center h-full min-h-[200px] bg-slate-50/50 rounded-xl border border-slate-100 p-6 overflow-x-auto relative shadow-inner print:bg-transparent print:border-none print:shadow-none print:p-0">
                                 
                                 {semis.length > 0 && (
                                   <div className="flex flex-col gap-6 justify-around min-w-[200px]">
                                     {semis.map((semi, i) => (
-                                      <div key={i} className="bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10">
+                                      <div key={i} className="bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10 print:shadow-none">
                                         <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">{semi.name}</div>
-                                        <div className={`truncate p-1 rounded ${semi.winner === semi.player1 ? 'bg-teal-50 font-bold text-teal-700' : ''}`}>{semi.player1}</div>
+                                        <div className={`break-words p-1 rounded ${semi.winner === semi.player1 ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{semi.player1}</div>
                                         <div className="border-t border-slate-100 my-1"></div>
-                                        <div className={`truncate p-1 rounded ${semi.winner === semi.player2 ? 'bg-teal-50 font-bold text-teal-700' : ''}`}>{semi.player2}</div>
+                                        <div className={`break-words p-1 rounded ${semi.winner === semi.player2 ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{semi.player2}</div>
                                       </div>
                                     ))}
                                   </div>
                                 )}
     
                                 {semis.length > 0 && final && (
-                                  <div className="flex-1 flex justify-center text-slate-300">
+                                  <div className="flex-1 flex justify-center text-slate-300 print:hidden">
                                     <ChevronRight size={32} />
                                   </div>
                                 )}
     
                                 {final && (
-                                  <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl">
+                                  <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl print:bg-transparent print:border-2">
                                     <div className="text-center text-xs text-amber-600 font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
-                                    <div className="bg-white border-2 border-amber-300 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800">
-                                        <div className={`truncate p-1 rounded ${final.winner === final.player1 ? 'bg-amber-100' : ''}`}>{final.player1}</div>
+                                    <div className="bg-white border-2 border-amber-300 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800 print:shadow-none">
+                                        <div className={`break-words p-1 rounded ${final.winner === final.player1 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player1}</div>
                                         <div className="border-t border-slate-100 my-1"></div>
-                                        <div className={`truncate p-1 rounded ${final.winner === final.player2 ? 'bg-amber-100' : ''}`}>{final.player2}</div>
+                                        <div className={`break-words p-1 rounded ${final.winner === final.player2 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player2}</div>
                                     </div>
                                     {final.winner && (
                                        <div className="mt-3 text-center">
-                                         <span className="bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full font-bold shadow-sm">Sieger: {final.winner}</span>
+                                         <span className="bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full font-bold shadow-sm print:border print:border-amber-400 print:bg-transparent">Sieger: {final.winner}</span>
                                        </div>
                                     )}
                                   </div>
@@ -1346,7 +1386,7 @@ function MatchCard({ match, onSaveResult }) {
     <div className={`border rounded-lg p-3 relative flex flex-col h-full ${match.isFinal ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-white shadow-sm'}`}>
       
       <div className="text-xs font-semibold text-teal-600 mb-1 flex justify-between items-center">
-        <span className="truncate pr-2">{match.category}</span>
+        <span className="break-words pr-2">{match.category}</span>
         <span className="text-slate-400 font-normal whitespace-nowrap">Platz {match.court}</span>
       </div>
       
@@ -1359,14 +1399,14 @@ function MatchCard({ match, onSaveResult }) {
 
       {/* Players */}
       <div className="flex flex-col gap-2 flex-grow">
-        <div className={`font-medium text-sm flex items-center gap-2 ${match.winner === match.player1 ? 'text-teal-700 font-bold' : 'text-slate-700'}`}>
-          <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 flex-shrink-0">1</span>
-          <span className="truncate">{match.player1}</span>
+        <div className={`font-medium text-sm flex items-start gap-2 ${match.winner === match.player1 ? 'text-teal-700 font-bold' : 'text-slate-700'}`}>
+          <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 flex-shrink-0 mt-0.5">1</span>
+          <span className="break-words">{match.player1}</span>
         </div>
         <div className="text-[10px] text-slate-300 text-center font-serif italic my-[-4px]">vs</div>
-        <div className={`font-medium text-sm flex items-center gap-2 ${match.winner === match.player2 ? 'text-teal-700 font-bold' : 'text-slate-700'}`}>
-          <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 flex-shrink-0">2</span>
-          <span className="truncate">{match.player2}</span>
+        <div className={`font-medium text-sm flex items-start gap-2 ${match.winner === match.player2 ? 'text-teal-700 font-bold' : 'text-slate-700'}`}>
+          <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 flex-shrink-0 mt-0.5">2</span>
+          <span className="break-words">{match.player2}</span>
         </div>
       </div>
 
@@ -1394,11 +1434,11 @@ function MatchCard({ match, onSaveResult }) {
                  <div className="flex gap-1">
                     <button 
                       onClick={() => setWinnerInput(match.player1)}
-                      className={`flex-1 text-[10px] py-1.5 rounded border transition-colors truncate px-1 ${winnerInput === match.player1 ? 'bg-amber-500 text-white border-amber-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                      className={`flex-1 text-[10px] py-1.5 rounded border transition-colors px-1 ${winnerInput === match.player1 ? 'bg-amber-500 text-white border-amber-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
                     >Sieg P1</button>
                     <button 
                       onClick={() => setWinnerInput(match.player2)}
-                      className={`flex-1 text-[10px] py-1.5 rounded border transition-colors truncate px-1 ${winnerInput === match.player2 ? 'bg-amber-500 text-white border-amber-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                      className={`flex-1 text-[10px] py-1.5 rounded border transition-colors px-1 ${winnerInput === match.player2 ? 'bg-amber-500 text-white border-amber-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
                     >Sieg P2</button>
                     <button 
                       onClick={handleSave} disabled={!winnerInput}
