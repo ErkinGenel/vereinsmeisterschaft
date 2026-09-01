@@ -271,25 +271,34 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
         if (availableCourts > 0) {
             let readyMatches = pendingPhase1.filter(m => {
                 if (m.stage === 'group') return true;
-                if (m.stage === 'semi') {
-                    const catGroups = allMatches.filter(x => x.category === m.category && x.stage === 'group');
-                    return catGroups.every(g => matchEndSlot[g.id] !== undefined && matchEndSlot[g.id] <= currentSlotIdx);
-                }
                 if (m.stage === 'ko') {
                     const prevRound = m.koRound * 2;
                     const prevMatches = allMatches.filter(x => x.category === m.category && x.koRound === prevRound);
                     if (prevMatches.length > 0) {
                         return prevMatches.every(pm => (pm.score === 'Freilos' || (matchEndSlot[pm.id] !== undefined && matchEndSlot[pm.id] <= currentSlotIdx)));
+                    } else {
+                        // First KO round after groups -> wait for groups to finish
+                        const catGroups = allMatches.filter(x => x.category === m.category && x.stage === 'group');
+                        if (catGroups.length > 0) {
+                            return catGroups.every(g => matchEndSlot[g.id] !== undefined && matchEndSlot[g.id] <= currentSlotIdx);
+                        }
+                        return true;
                     }
-                    return true;
                 }
                 if (m.stage === 'final') {
-                    const catSemis = allMatches.filter(x => x.category === m.category && (x.stage === 'semi' || x.koRound === 2));
-                    if (catSemis.length > 0) {
-                        return catSemis.every(s => (s.score === 'Freilos' || (matchEndSlot[s.id] !== undefined && matchEndSlot[s.id] <= currentSlotIdx)));
+                    const catKo = allMatches.filter(x => x.category === m.category && x.stage === 'ko');
+                    if (catKo.length > 0) {
+                        const catSemis = catKo.filter(x => x.koRound === 2);
+                        if (catSemis.length > 0) {
+                            return catSemis.every(s => (s.score === 'Freilos' || (matchEndSlot[s.id] !== undefined && matchEndSlot[s.id] <= currentSlotIdx)));
+                        }
+                        return catKo.every(k => (k.score === 'Freilos' || (matchEndSlot[k.id] !== undefined && matchEndSlot[k.id] <= currentSlotIdx)));
                     } else {
                         const catGroups = allMatches.filter(x => x.category === m.category && x.stage === 'group');
-                        return catGroups.every(g => matchEndSlot[g.id] !== undefined && matchEndSlot[g.id] <= currentSlotIdx);
+                        if (catGroups.length > 0) {
+                            return catGroups.every(g => matchEndSlot[g.id] !== undefined && matchEndSlot[g.id] <= currentSlotIdx);
+                        }
+                        return true;
                     }
                 }
                 return false;
@@ -409,8 +418,6 @@ export default function App() {
   const [breakDuration, setBreakDuration] = useState(10);
   const [finalDuration, setFinalDuration] = useState(90);
   
-  const [compactMode, setCompactMode] = useState(false);
-  const [maxTournamentHours, setMaxTournamentHours] = useState(9);
   const [scheduleAllFinalsAtEnd, setScheduleAllFinalsAtEnd] = useState(false);
   
   const [participants, setParticipants] = useState(() => {
@@ -432,7 +439,7 @@ export default function App() {
         __grandFinals: grandFinals, 
         __categoryModes: categoryModes, 
         __groupCounts: groupCounts,
-        __settings: { compactMode, maxTournamentHours, scheduleAllFinalsAtEnd },
+        __settings: { scheduleAllFinalsAtEnd },
         __matchData: matchData,
         __tournamentStructures: tournamentStructures,
         __timeSlots: timeSlots
@@ -465,8 +472,6 @@ export default function App() {
         if (loadedData.__groupCounts) { setGroupCounts(loadedData.__groupCounts); delete loadedData.__groupCounts; }
         
         if (loadedData.__settings) {
-            setCompactMode(loadedData.__settings.compactMode);
-            setMaxTournamentHours(loadedData.__settings.maxTournamentHours);
             setScheduleAllFinalsAtEnd(loadedData.__settings.scheduleAllFinalsAtEnd || false);
             delete loadedData.__settings;
         }
@@ -821,38 +826,10 @@ export default function App() {
           return { cat, data: parsed };
       }).filter(c => c.data !== null);
 
-      let currentStructuresAndMatches = catsWithPlayers.map(c => {
+      catsWithPlayers.forEach(c => {
           const userMode = categoryModes[c.cat] || 'standard';
-          const initialMode = userMode === 'ko_only' ? 'knockout' : userMode;
-          const res = generateCategory(c.cat, c.data, initialMode, 1);
-          return { cat: c.cat, data: c.data, mode: initialMode, matchesCount: Object.values(res.initialMatches).filter(m => m.score !== 'Freilos').length };
-      });
-
-      if (compactMode) {
-          const maxAllowedMatches = Math.floor((maxTournamentHours * 60) / (matchDuration + breakDuration)) * numCourts;
-          let activeMatchesCount = currentStructuresAndMatches.reduce((acc, c) => acc + c.matchesCount, 0);
-          
-          if (activeMatchesCount > maxAllowedMatches) {
-              currentStructuresAndMatches.sort((a, b) => b.matchesCount - a.matchesCount);
-              
-              for (let i = 0; i < currentStructuresAndMatches.length; i++) {
-                  if (activeMatchesCount <= maxAllowedMatches) break;
-                  const c = currentStructuresAndMatches[i];
-                  if (c.data.length > 4 && c.mode !== 'knockout' && c.mode !== 'group_only') {
-                      const koRes = generateCategory(c.cat, c.data, 'knockout', 1);
-                      const koCount = Object.values(koRes.initialMatches).filter(m => m.score !== 'Freilos').length;
-                      if (koCount < c.matchesCount) {
-                          activeMatchesCount -= (c.matchesCount - koCount);
-                          c.mode = 'knockout';
-                          c.matchesCount = koCount;
-                      }
-                  }
-              }
-          }
-      }
-
-      currentStructuresAndMatches.forEach(c => {
-          const res = generateCategory(c.cat, c.data, c.mode, matchIdCounter);
+          const mode = userMode === 'ko_only' ? 'knockout' : userMode;
+          const res = generateCategory(c.cat, c.data, mode, matchIdCounter);
           matchIdCounter = res.nextId;
           finalStructures[c.cat] = res.catStructure;
           finalMatches = { ...finalMatches, ...res.initialMatches };
@@ -1013,22 +990,6 @@ export default function App() {
               </h2>
               
               <div className="space-y-6">
-                <div className="bg-slate-100 p-4 rounded-lg flex flex-col md:flex-row gap-4 items-start md:items-center">
-                    <label className="flex items-center gap-2 font-semibold text-slate-800 cursor-pointer shrink-0">
-                        <input type="checkbox" checked={compactMode} onChange={e => setCompactMode(e.target.checked)} className="w-5 h-5 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer" />
-                        Kompaktmodus aktivieren
-                    </label>
-                    {compactMode ? (
-                        <div className="flex items-center gap-2 w-full md:ml-4 animate-in fade-in">
-                            <span className="text-sm text-slate-600 shrink-0">Ziel-Dauer:</span>
-                            <input type="number" min="1" max="48" value={maxTournamentHours} onChange={e => setMaxTournamentHours(parseInt(e.target.value) || 9)} className="w-16 p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-bold" />
-                            <span className="text-sm text-slate-600">Stunden</span>
-                        </div>
-                    ) : (
-                        <div className="text-sm text-slate-500 md:ml-4">Standard-Turnierplanung ohne automatische K.O.-Reduktion.</div>
-                    )}
-                </div>
-
                 <div className="bg-slate-100 p-4 rounded-lg flex flex-col md:flex-row gap-4 items-start md:items-center">
                     <label className="flex items-center gap-2 font-semibold text-slate-800 cursor-pointer shrink-0">
                         <input type="checkbox" checked={scheduleAllFinalsAtEnd} onChange={e => setScheduleAllFinalsAtEnd(e.target.checked)} className="w-5 h-5 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer" />
