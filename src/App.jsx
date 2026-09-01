@@ -18,7 +18,7 @@ const LAST_NAMES = ["Müller", "Schmidt", "Schneider", "Fischer", "Weber", "Meye
 const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 const extractPlayers = (participantString) => {
-  if (!participantString || participantString.includes('Gruppe') || participantString.includes('Sieger') || participantString.includes('Platz')) return [];
+  if (!participantString || participantString === 'Freilos' || participantString.includes('Gruppe') || participantString.includes('Sieger') || participantString.includes('Platz')) return [];
   return participantString.split(/\s*\/\s*|\s*&\s*|\s*und\s*/i).map(p => p.trim());
 };
 
@@ -89,10 +89,7 @@ const processTournamentProgressPure = (currentMatches, structures, activeCategor
 
         const catMatches = Object.values(updated).filter(m => m.category === cat);
         const groupMatches = catMatches.filter(m => m.stage === 'group');
-        const semis = catMatches.filter(m => m.stage === 'semi');
-        const final = catMatches.find(m => m.stage === 'final' && (!m.koRound || m.koRound === 1));
-        const count = structure.playerCount;
-
+        
         const groupsDone = groupMatches.length > 0 && groupMatches.every(m => m.winner);
         
         const standings = {};
@@ -102,67 +99,102 @@ const processTournamentProgressPure = (currentMatches, structures, activeCategor
             });
         }
 
-        if (structure.type === 'single-group-semis') {
-            const s1 = semis.find(m => m.semiIndex === 1);
-            const s2 = semis.find(m => m.semiIndex === 2);
-            if (groupsDone && standings['Gruppe 1']?.length >= 4) {
-                if (s1 && !s1.winner) { s1.player1 = standings['Gruppe 1'][0].name; s1.player2 = standings['Gruppe 1'][3].name; }
-                if (s2 && !s2.winner) { s2.player1 = standings['Gruppe 1'][1].name; s2.player2 = standings['Gruppe 1'][2].name; }
-            } else {
-                if (s1 && !s1.winner) { s1.player1 = '1. Gruppe 1'; s1.player2 = '4. Gruppe 1'; }
-                if (s2 && !s2.winner) { s2.player1 = '2. Gruppe 1'; s2.player2 = '3. Gruppe 1'; }
-            }
-        } else if (structure.type === 'two-groups-semis') {
-            const s1 = semis.find(m => m.semiIndex === 1);
-            const s2 = semis.find(m => m.semiIndex === 2);
-            if (groupsDone && standings['Gruppe A']?.length >= 2 && standings['Gruppe B']?.length >= 2) {
-                if (s1 && !s1.winner) { s1.player1 = standings['Gruppe A'][0].name; s1.player2 = standings['Gruppe B'][1].name; }
-                if (s2 && !s2.winner) { s2.player1 = standings['Gruppe B'][0].name; s2.player2 = standings['Gruppe A'][1].name; }
-            } else {
-                if (s1 && !s1.winner) { s1.player1 = '1. Gruppe A'; s1.player2 = '2. Gruppe B'; }
-                if (s2 && !s2.winner) { s2.player1 = '1. Gruppe B'; s2.player2 = '2. Gruppe A'; }
-            }
-        }
-
-        if (final && structure.type !== 'knockout') {
-              if (structure.type === 'round-robin-final') {
-                  if (groupsDone && standings['Gruppe 1']?.length >= 2) {
-                      if (!final.winner) { final.player1 = standings['Gruppe 1'][0].name; final.player2 = standings['Gruppe 1'][1].name; }
-                  } else if (count > 2) {
-                      if (!final.winner) { final.player1 = '1. Gruppe 1'; final.player2 = '2. Gruppe 1'; }
-                  }
-              } else if (semis.length === 2) {
-                  const s1 = semis.find(m => m.semiIndex === 1);
-                  const s2 = semis.find(m => m.semiIndex === 2);
-                  if (s1?.winner && s2?.winner) {
-                      if (!final.winner) { final.player1 = s1.winner; final.player2 = s2.winner; }
-                  } else {
-                      if (!final.winner) { final.player1 = 'Sieger HF 1'; final.player2 = 'Sieger HF 2'; }
-                  }
-              }
-        }
-    });
-
-    const allKoMatches = Object.values(updated).filter(m => m.stage === 'ko' || (m.stage === 'final' && m.koRound === 1));
-    allKoMatches.forEach(m => {
-        if (m.winner && m.koRound > 1) {
-            const nextRound = m.koRound / 2;
-            const nextMatchIndex = Math.floor(m.matchIndex / 2);
-            const nextMatch = allKoMatches.find(x => x.category === m.category && x.koRound === nextRound && x.matchIndex === nextMatchIndex);
-            
-            if (nextMatch && !nextMatch.winner) {
-                if (m.matchIndex % 2 === 0) {
-                    nextMatch.player1 = m.winner;
-                } else {
-                    nextMatch.player2 = m.winner;
+        // Dynamische Auflösung der Gruppen-Platzhalter für die K.O.-Runde
+        if (groupsDone) {
+            catMatches.forEach(m => {
+                if (m.stage === 'ko' || m.stage === 'final') {
+                    let updatedConflict = false;
+                    ['player1', 'player2'].forEach(pKey => {
+                        const origKey = pKey === 'player1' ? 'originalPlayer1' : 'originalPlayer2';
+                        const pVal = m[origKey];
+                        if (pVal) {
+                            const matchRegex = pVal.match(/^(\d+)\.\s+(Gruppe\s+[A-Z0-9]+)$/);
+                            if (matchRegex) {
+                                const rank = parseInt(matchRegex[1], 10) - 1;
+                                const gName = matchRegex[2];
+                                if (standings[gName] && standings[gName][rank]) {
+                                    if (m[pKey] !== standings[gName][rank].name) {
+                                        m[pKey] = standings[gName][rank].name;
+                                        m.winner = null;
+                                        m.score = '';
+                                        updatedConflict = true;
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    if (updatedConflict && m.score !== 'Freilos') {
+                        m.conflictPlayers = [...extractPlayers(m.player1), ...extractPlayers(m.player2)];
+                    }
                 }
-                nextMatch.conflictPlayers = [...extractPlayers(nextMatch.player1), ...extractPlayers(nextMatch.player2)];
-            }
+            });
+        } else {
+            // Fallback: Wenn Gruppen nicht fertig sind, Platzhalter wiederherstellen
+            catMatches.forEach(m => {
+                if (m.stage === 'ko' || m.stage === 'final') {
+                    let reset = false;
+                    ['player1', 'player2'].forEach(pKey => {
+                        const origKey = pKey === 'player1' ? 'originalPlayer1' : 'originalPlayer2';
+                        const origVal = m[origKey];
+                        if (origVal && origVal.match(/^(\d+)\.\s+(Gruppe\s+[A-Z0-9]+)$/) && m[pKey] !== origVal) {
+                            m[pKey] = origVal;
+                            m.winner = null;
+                            m.score = '';
+                            reset = true;
+                        }
+                    });
+                    if (reset && m.score !== 'Freilos') {
+                        m.conflictPlayers = [...extractPlayers(m.player1), ...extractPlayers(m.player2)];
+                    }
+                }
+            });
         }
+
+        // K.O.-Gewinner in nächste Runden propagieren
+        const allKoMatches = catMatches.filter(m => m.stage === 'ko' || (m.stage === 'final' && m.koRound === 1));
+        const koRounds = [...new Set(allKoMatches.map(m => m.koRound))].sort((a,b) => b-a); 
+        
+        koRounds.forEach(r => {
+            const matchesInRound = allKoMatches.filter(m => m.koRound === r);
+            matchesInRound.forEach(m => {
+                if (r > 1) { 
+                    const nextRound = r / 2;
+                    const nextMatchIndex = Math.floor(m.matchIndex / 2);
+                    const nextMatch = allKoMatches.find(x => x.koRound === nextRound && x.matchIndex === nextMatchIndex);
+                    
+                    if (nextMatch) {
+                        const pKey = m.matchIndex % 2 === 0 ? 'player1' : 'player2';
+                        const origKey = m.matchIndex % 2 === 0 ? 'originalPlayer1' : 'originalPlayer2';
+                        
+                        if (m.winner && m.score !== 'Freilos') {
+                            if (nextMatch[pKey] !== m.winner) {
+                                nextMatch[pKey] = m.winner;
+                                nextMatch.winner = null;
+                                nextMatch.score = nextMatch.score === 'Freilos' ? '' : nextMatch.score;
+                                if(nextMatch.originalPlayer1 !== 'Freilos' && nextMatch.originalPlayer2 !== 'Freilos') {
+                                    nextMatch.conflictPlayers = [...extractPlayers(nextMatch.player1), ...extractPlayers(nextMatch.player2)];
+                                }
+                            }
+                        } else if (m.winner && m.score === 'Freilos') {
+                            if (nextMatch[pKey] !== m.winner) {
+                                nextMatch[pKey] = m.winner;
+                            }
+                        } else {
+                            if (nextMatch[origKey] && nextMatch[pKey] !== nextMatch[origKey]) {
+                                nextMatch[pKey] = nextMatch[origKey];
+                                nextMatch.winner = null;
+                                nextMatch.score = '';
+                                nextMatch.conflictPlayers = [...extractPlayers(nextMatch.player1), ...extractPlayers(nextMatch.player2)];
+                            }
+                        }
+                    }
+                }
+            });
+        });
     });
 
     Object.values(updated).forEach(m => {
-        if(m.score !== 'Freilos') {
+        if(m.score !== 'Freilos' && m.originalPlayer1 !== 'Freilos' && m.originalPlayer2 !== 'Freilos') {
             m.conflictPlayers = [...extractPlayers(m.player1), ...extractPlayers(m.player2)];
         }
     });
@@ -229,7 +261,7 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
         matchEndSlot[id] = sIdx + 1;
     });
 
-    let pendingPhase1 = allMatches.filter(m => !finishedIds.has(m.id) && !m.manualTime && !(m.stage === 'final' && (scheduleAllFinalsAtEnd || grandFinalCategories.includes(m.category))));
+    let pendingPhase1 = allMatches.filter(m => !finishedIds.has(m.id) && !m.manualTime && m.score !== 'Freilos' && !(m.stage === 'final' && (scheduleAllFinalsAtEnd || grandFinalCategories.includes(m.category))));
     let currentSlotIdx = 0;
 
     while (pendingPhase1.length > 0) {
@@ -285,7 +317,7 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
         }
     });
 
-    let pendingPhase2 = allMatches.filter(m => !finishedIds.has(m.id) && m.stage === 'final' && !m.manualTime && (scheduleAllFinalsAtEnd || grandFinalCategories.includes(m.category)));
+    let pendingPhase2 = allMatches.filter(m => !finishedIds.has(m.id) && m.stage === 'final' && !m.manualTime && m.score !== 'Freilos' && (scheduleAllFinalsAtEnd || grandFinalCategories.includes(m.category)));
     currentSlotIdx = phase2StartIdx;
 
     while (pendingPhase2.length > 0) {
@@ -352,11 +384,20 @@ export default function App() {
   
   const [grandFinals, setGrandFinals] = useState(["Herren-Einzel-U60"]);
   const [categoryModes, setCategoryModes] = useState({});
+  const [groupCounts, setGroupCounts] = useState({});
 
   const getMode = (cat) => categoryModes[cat] || 'standard';
+  const getGroupCount = (cat) => groupCounts[cat] || 'auto';
 
   const setCategoryMode = (cat, mode) => {
       setCategoryModes(prev => ({ ...prev, [cat]: mode }));
+      setTimeSlots(null);
+      setTournamentStructures(null);
+      setMatchData({});
+  };
+
+  const setGroupCount = (cat, countStr) => {
+      setGroupCounts(prev => ({ ...prev, [cat]: countStr }));
       setTimeSlots(null);
       setTournamentStructures(null);
       setMatchData({});
@@ -390,6 +431,7 @@ export default function App() {
         ...participants, 
         __grandFinals: grandFinals, 
         __categoryModes: categoryModes, 
+        __groupCounts: groupCounts,
         __settings: { compactMode, maxTournamentHours, scheduleAllFinalsAtEnd },
         __matchData: matchData,
         __tournamentStructures: tournamentStructures,
@@ -412,19 +454,16 @@ export default function App() {
       try {
         const loadedData = JSON.parse(e.target.result);
         
-        if (loadedData.__grandFinals) {
-            setGrandFinals(loadedData.__grandFinals);
-            delete loadedData.__grandFinals;
-        }
-        if (loadedData.__categoryModes) {
-            setCategoryModes(loadedData.__categoryModes);
-            delete loadedData.__categoryModes;
-        } else if (loadedData.__koOnly) {
+        if (loadedData.__grandFinals) { setGrandFinals(loadedData.__grandFinals); delete loadedData.__grandFinals; }
+        if (loadedData.__categoryModes) { setCategoryModes(loadedData.__categoryModes); delete loadedData.__categoryModes; } 
+        else if (loadedData.__koOnly) {
             const migrated = {};
             loadedData.__koOnly.forEach(c => migrated[c] = 'ko_only');
             setCategoryModes(prev => ({...prev, ...migrated}));
             delete loadedData.__koOnly;
         }
+        if (loadedData.__groupCounts) { setGroupCounts(loadedData.__groupCounts); delete loadedData.__groupCounts; }
+        
         if (loadedData.__settings) {
             setCompactMode(loadedData.__settings.compactMode);
             setMaxTournamentHours(loadedData.__settings.maxTournamentHours);
@@ -432,26 +471,14 @@ export default function App() {
             delete loadedData.__settings;
         }
 
-        if (loadedData.__matchData) {
-            setMatchData(loadedData.__matchData);
-            delete loadedData.__matchData;
-        } else {
-            setMatchData({});
-        }
+        if (loadedData.__matchData) { setMatchData(loadedData.__matchData); delete loadedData.__matchData; } 
+        else { setMatchData({}); }
 
-        if (loadedData.__tournamentStructures) {
-            setTournamentStructures(loadedData.__tournamentStructures);
-            delete loadedData.__tournamentStructures;
-        } else {
-            setTournamentStructures(null);
-        }
+        if (loadedData.__tournamentStructures) { setTournamentStructures(loadedData.__tournamentStructures); delete loadedData.__tournamentStructures; } 
+        else { setTournamentStructures(null); }
 
-        if (loadedData.__timeSlots) {
-            setTimeSlots(loadedData.__timeSlots);
-            delete loadedData.__timeSlots;
-        } else {
-            setTimeSlots(null);
-        }
+        if (loadedData.__timeSlots) { setTimeSlots(loadedData.__timeSlots); delete loadedData.__timeSlots; } 
+        else { setTimeSlots(null); }
 
         const loadedCategories = Object.keys(loadedData);
         setCategories(prev => Array.from(new Set([...prev, ...loadedCategories])));
@@ -479,53 +506,37 @@ export default function App() {
   const handleRemoveCategory = (catToRemove) => {
       setCategories(prev => prev.filter(c => c !== catToRemove));
       setGrandFinals(prev => prev.filter(c => c !== catToRemove));
-      setCategoryModes(prev => {
-          const updated = { ...prev };
-          delete updated[catToRemove];
-          return updated;
-      });
-      setParticipants(prev => {
-          const updated = { ...prev };
-          delete updated[catToRemove];
-          return updated;
-      });
-      setTimeSlots(null);
-      setTournamentStructures(null);
-      setMatchData({});
+      setCategoryModes(prev => { const updated = { ...prev }; delete updated[catToRemove]; return updated; });
+      setGroupCounts(prev => { const updated = { ...prev }; delete updated[catToRemove]; return updated; });
+      setParticipants(prev => { const updated = { ...prev }; delete updated[catToRemove]; return updated; });
+      setTimeSlots(null); setTournamentStructures(null); setMatchData({});
   };
 
   const saveEditedCategory = (oldCat) => {
       const newCat = editCategoryName.trim();
-      if (!newCat || newCat === oldCat) {
-          setEditingCategory(null);
-          return;
-      }
-      if (categories.includes(newCat)) {
-          setEditingCategory(null); 
-          return;
-      }
+      if (!newCat || newCat === oldCat) { setEditingCategory(null); return; }
+      if (categories.includes(newCat)) { setEditingCategory(null); return; }
 
       setCategories(prev => prev.map(c => c === oldCat ? newCat : c));
       setGrandFinals(prev => prev.map(c => c === oldCat ? newCat : c));
+      
       setCategoryModes(prev => {
           const updated = { ...prev };
-          if (updated[oldCat]) {
-              updated[newCat] = updated[oldCat];
-              delete updated[oldCat];
-          }
+          if (updated[oldCat]) { updated[newCat] = updated[oldCat]; delete updated[oldCat]; }
+          return updated;
+      });
+      setGroupCounts(prev => {
+          const updated = { ...prev };
+          if (updated[oldCat]) { updated[newCat] = updated[oldCat]; delete updated[oldCat]; }
           return updated;
       });
       setParticipants(prev => {
           const updated = { ...prev };
-          updated[newCat] = updated[oldCat];
-          delete updated[oldCat];
+          updated[newCat] = updated[oldCat]; delete updated[oldCat];
           return updated;
       });
       
-      setTimeSlots(null);
-      setTournamentStructures(null);
-      setMatchData({});
-      setEditingCategory(null);
+      setTimeSlots(null); setTournamentStructures(null); setMatchData({}); setEditingCategory(null);
   };
 
   const toggleGrandFinal = (cat) => {
@@ -533,9 +544,7 @@ export default function App() {
           if (prev.includes(cat)) return prev.filter(c => c !== cat);
           return [...prev, cat];
       });
-      setTimeSlots(null);
-      setTournamentStructures(null);
-      setMatchData({});
+      setTimeSlots(null); setTournamentStructures(null); setMatchData({});
   };
 
   const handleParticipantChange = (category, value) => {
@@ -632,8 +641,8 @@ export default function App() {
                   stage: roundCount === 1 ? 'final' : 'ko',
                   koRound: roundCount,
                   matchIndex: i,
-                  player1: p1 || 'Freilos',
-                  player2: p2 || 'Freilos',
+                  player1: p1 || 'Freilos', player2: p2 || 'Freilos',
+                  originalPlayer1: p1 || 'Freilos', originalPlayer2: p2 || 'Freilos',
                   winner: winner,
                   score: isBye ? 'Freilos' : '',
                   isFinal: roundCount === 1,
@@ -653,8 +662,8 @@ export default function App() {
                       stage: currentRoundSize === 1 ? 'final' : 'ko',
                       koRound: currentRoundSize,
                       matchIndex: i,
-                      player1: `Sieger ${getRoundName(currentRoundSize*2)} ${i*2+1}`,
-                      player2: `Sieger ${getRoundName(currentRoundSize*2)} ${i*2+2}`,
+                      player1: `Sieger ${getRoundName(currentRoundSize*2)} ${i*2+1}`, player2: `Sieger ${getRoundName(currentRoundSize*2)} ${i*2+2}`,
+                      originalPlayer1: `Sieger ${getRoundName(currentRoundSize*2)} ${i*2+1}`, originalPlayer2: `Sieger ${getRoundName(currentRoundSize*2)} ${i*2+2}`,
                       winner: null,
                       score: '',
                       isFinal: currentRoundSize === 1,
@@ -667,88 +676,128 @@ export default function App() {
           return { catStructure, initialMatches, nextId: matchIdCounter };
       }
 
-      let groupMatches = [];
-      if (mode === 'group_only' || category.toLowerCase().includes("kinder")) {
-          catStructure.type = 'group-only';
-          catStructure.groups['Gruppe 1'] = players;
-          for(let i=0; i<count; i++) {
-              for(let j=i+1; j<count; j++) {
-                  groupMatches.push({ player1: players[i], player2: players[j], groupName: 'Gruppe 1' });
-              }
-          }
-      } else if (count <= 3) {
-          catStructure.type = 'round-robin-final';
-          catStructure.groups['Gruppe 1'] = players;
-          for(let i=0; i<count; i++) {
-              for(let j=i+1; j<count; j++) {
-                  groupMatches.push({ player1: players[i], player2: players[j], groupName: 'Gruppe 1' });
-              }
-          }
-      } else if (count === 4) {
-          catStructure.type = 'single-group-semis';
-          catStructure.groups['Gruppe 1'] = players;
-          for(let i=0; i<count; i++) {
-              for(let j=i+1; j<count; j++) {
-                  groupMatches.push({ player1: players[i], player2: players[j], groupName: 'Gruppe 1' });
-              }
-          }
+      // Dynamische Gruppenlogik
+      let customGroupCount = getGroupCount(category);
+      let numGroups = 1;
+      
+      if (customGroupCount && customGroupCount !== 'auto') {
+          numGroups = parseInt(customGroupCount, 10);
       } else {
-          catStructure.type = 'two-groups-semis';
-          const groupA = [];
-          const groupB = [];
-          players.forEach((p, i) => {
-              if (i % 4 === 0 || i % 4 === 3) groupA.push(p);
-              else groupB.push(p);
-          });
-          catStructure.groups['Gruppe A'] = groupA;
-          catStructure.groups['Gruppe B'] = groupB;
-          
-          for(let i=0; i<groupA.length; i++) {
-              for(let j=i+1; j<groupA.length; j++) groupMatches.push({ player1: groupA[i], player2: groupA[j], groupName: 'Gruppe A' });
-          }
-          for(let i=0; i<groupB.length; i++) {
-              for(let j=i+1; j<groupB.length; j++) groupMatches.push({ player1: groupB[i], player2: groupB[j], groupName: 'Gruppe B' });
-          }
+          if (category.toLowerCase().includes("kinder")) numGroups = 1;
+          else if (count <= 4) numGroups = 1;
+          else numGroups = 2;
       }
+      
+      // Begrenzen, damit Gruppen nicht leer bleiben (mindestens ca. 1.5 Spieler pro Gruppe)
+      numGroups = Math.max(1, Math.min(numGroups, Math.floor(count / 2) || 1));
+
+      catStructure.type = mode === 'group_only' ? 'group-only' : 'standard';
+      
+      let groupNames = [];
+      if (numGroups === 1) {
+          groupNames = ['Gruppe 1'];
+      } else {
+          groupNames = Array.from({length: numGroups}, (_, i) => `Gruppe ${String.fromCharCode(65 + i)}`); // A, B, C...
+      }
+
+      groupNames.forEach(gn => catStructure.groups[gn] = []);
+      
+      // Verteile Spieler abwechselnd auf Gruppen (Round Robin Seeding)
+      players.forEach((p, i) => {
+          catStructure.groups[groupNames[i % numGroups]].push(p);
+      });
+
+      // Generiere Gruppenspiele
+      let groupMatches = [];
+      groupNames.forEach(gn => {
+          const gPlayers = catStructure.groups[gn];
+          for (let i = 0; i < gPlayers.length; i++) {
+              for (let j = i + 1; j < gPlayers.length; j++) {
+                  groupMatches.push({ player1: gPlayers[i], player2: gPlayers[j], groupName: gn });
+              }
+          }
+      });
 
       groupMatches.forEach((m, idx) => {
           let id = matchIdCounter++;
           initialMatches[id] = {
               id, category, type: 'Gruppe', name: `Spiel ${idx+1}`, stage: 'group',
               player1: m.player1, player2: m.player2, groupName: m.groupName,
+              originalPlayer1: m.player1, originalPlayer2: m.player2,
               winner: null, score: '', isFinal: false, isSemi: false,
               conflictPlayers: [...extractPlayers(m.player1), ...extractPlayers(m.player2)]
           };
       });
 
-      if (count >= 4 && catStructure.type !== 'group-only') {
-          let s1 = matchIdCounter++;
-          let s2 = matchIdCounter++;
-          initialMatches[s1] = {
-              id: s1, category, type: 'Halbfinale', name: 'HF 1', stage: 'semi', semiIndex: 1,
-              player1: count === 4 ? '1. Gruppe 1' : '1. Gruppe A', 
-              player2: count === 4 ? '4. Gruppe 1' : '2. Gruppe B', 
-              winner: null, score: '', isFinal: false, isSemi: true, conflictPlayers: []
-          };
-          initialMatches[s2] = {
-              id: s2, category, type: 'Halbfinale', name: 'HF 2', stage: 'semi', semiIndex: 2,
-              player1: count === 4 ? '2. Gruppe 1' : '1. Gruppe B', 
-              player2: count === 4 ? '3. Gruppe 1' : '2. Gruppe A', 
-              winner: null, score: '', isFinal: false, isSemi: true, conflictPlayers: []
-          };
-      }
+      // K.O. Phase nach Gruppen (sofern nicht 'group_only')
+      if (mode !== 'group_only') {
+          let advancers = [];
+          if (numGroups === 1) {
+              let numAdvancing = count >= 4 ? 4 : 2;
+              for(let i=1; i<=numAdvancing; i++) advancers.push(`${i}. Gruppe 1`);
+          } else {
+              // Bei mehreren Gruppen kommen die Top 2 weiter
+              for(let i=0; i<numGroups; i++) advancers.push(`1. ${groupNames[i]}`);
+              for(let i=0; i<numGroups; i++) advancers.push(`2. ${groupNames[i]}`);
+          }
 
-      if (catStructure.type !== 'group-only') {
-          let fId = matchIdCounter++;
-          let f_p1 = count >= 4 ? 'Sieger HF 1' : '1. Gruppe 1';
-          let f_p2 = count >= 4 ? 'Sieger HF 2' : '2. Gruppe 1';
-          if (count === 2) { f_p1 = players[0]; f_p2 = players[1]; }
+          let bracketSize = Math.max(2, Math.pow(2, Math.ceil(Math.log2(advancers.length))));
+          while(advancers.length < bracketSize) advancers.push('Freilos');
 
-          initialMatches[fId] = {
-              id: fId, category, type: 'Finale', name: 'Finale', stage: 'final', koRound: 1,
-              player1: f_p1, player2: f_p2, winner: null, score: '', isFinal: true, isSemi: false, 
-              conflictPlayers: (count === 2 ? [...extractPlayers(f_p1), ...extractPlayers(f_p2)] : [])
-          };
+          let seeds = getKnockoutSeeds(bracketSize);
+          let roundCount = bracketSize / 2;
+
+          for (let i = 0; i < roundCount; i++) {
+              let p1 = advancers[seeds[i * 2]];
+              let p2 = advancers[seeds[i * 2 + 1]];
+              
+              let isBye = (p1 === 'Freilos' || p2 === 'Freilos');
+              let winner = null;
+              if (isBye) {
+                  if (p1 !== 'Freilos') winner = p1;
+                  else if (p2 !== 'Freilos') winner = p2;
+              }
+
+              let id = matchIdCounter++;
+              initialMatches[id] = {
+                  id, category,
+                  type: roundCount === 1 ? 'Finale' : (roundCount === 2 ? 'Halbfinale' : (roundCount === 4 ? 'Viertelfinale' : 'Achtelfinale')),
+                  name: roundCount === 1 ? 'Finale' : `Spiel ${i+1}`,
+                  stage: roundCount === 1 ? 'final' : 'ko',
+                  koRound: roundCount,
+                  matchIndex: i,
+                  player1: p1, player2: p2,
+                  originalPlayer1: p1, originalPlayer2: p2,
+                  winner: winner,
+                  score: isBye ? 'Freilos' : '',
+                  isFinal: roundCount === 1,
+                  isSemi: roundCount === 2,
+                  conflictPlayers: isBye ? [] : [...extractPlayers(p1), ...extractPlayers(p2)]
+              };
+          }
+
+          let currentRoundSize = roundCount / 2;
+          while (currentRoundSize >= 1) {
+              for (let i = 0; i < currentRoundSize; i++) {
+                  let id = matchIdCounter++;
+                  initialMatches[id] = {
+                      id, category,
+                      type: currentRoundSize === 1 ? 'Finale' : (currentRoundSize === 2 ? 'Halbfinale' : 'Viertelfinale'),
+                      name: currentRoundSize === 1 ? 'Finale' : `Spiel ${i+1}`,
+                      stage: currentRoundSize === 1 ? 'final' : 'ko',
+                      koRound: currentRoundSize,
+                      matchIndex: i,
+                      player1: `Sieger ${getRoundName(currentRoundSize*2)} ${i*2+1}`, player2: `Sieger ${getRoundName(currentRoundSize*2)} ${i*2+2}`,
+                      originalPlayer1: `Sieger ${getRoundName(currentRoundSize*2)} ${i*2+1}`, originalPlayer2: `Sieger ${getRoundName(currentRoundSize*2)} ${i*2+2}`,
+                      winner: null,
+                      score: '',
+                      isFinal: currentRoundSize === 1,
+                      isSemi: currentRoundSize === 2,
+                      conflictPlayers: []
+                  };
+              }
+              currentRoundSize /= 2;
+          }
       }
 
       return { catStructure, initialMatches, nextId: matchIdCounter };
@@ -901,9 +950,29 @@ export default function App() {
                                         Nur K.O.
                                     </label>
                                 </div>
+                                
+                                {getMode(cat) !== 'ko_only' && (
+                                    <div className="flex items-center justify-between mt-1 bg-white/60 p-1.5 rounded border border-slate-100">
+                                        <span className="text-[10px] text-slate-500 font-medium">Anzahl Gruppen:</span>
+                                        <select
+                                            value={getGroupCount(cat)}
+                                            onChange={(e) => setGroupCount(cat, e.target.value)}
+                                            className="text-[10px] p-0.5 border border-slate-200 rounded text-slate-700 bg-white focus:ring-1 focus:ring-teal-500 outline-none cursor-pointer w-20"
+                                        >
+                                            <option value="auto">Auto</option>
+                                            <option value="1">1 Gruppe</option>
+                                            <option value="2">2 Gruppen</option>
+                                            <option value="3">3 Gruppen</option>
+                                            <option value="4">4 Gruppen</option>
+                                            <option value="5">5 Gruppen</option>
+                                            <option value="6">6 Gruppen</option>
+                                            <option value="8">8 Gruppen</option>
+                                        </select>
+                                    </div>
+                                )}
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                          <div className="flex items-center justify-end gap-1 shrink-0 mt-0.5">
                             <button onClick={() => addRandomPlayer(cat)} className="text-[10px] bg-teal-50 text-teal-600 hover:bg-teal-100 border border-teal-200 px-2 py-1 rounded flex items-center gap-1 transition-colors" title="Zufälligen Spieler generieren"><Dices size={12} /> Zufall</button>
                             <button onClick={() => { setEditingCategory(cat); setEditCategoryName(cat); }} className="text-[10px] bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 px-2 py-1 rounded flex items-center transition-colors" title="Umbenennen"><Edit2 size={12} /></button>
                             <button onClick={() => handleRemoveCategory(cat)} className="text-[10px] bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-2 py-1 rounded flex items-center transition-colors" title="Löschen"><Trash2 size={12} /></button>
@@ -1089,8 +1158,9 @@ export default function App() {
                 if (!data) return null;
                 
                 const catMatches = Object.values(matchData).filter(m => m.category === cat);
-                const semis = catMatches.filter(m => m.stage === 'semi').sort((a, b) => a.semiIndex - b.semiIndex);
+                const koMatches = catMatches.filter(m => m.stage === 'ko');
                 const final = catMatches.find(m => m.stage === 'final' && (!m.koRound || m.koRound === 1));
+                const hasKo = koMatches.length > 0 || final;
 
                 return (
                   <div key={cat} className={`bg-white rounded-xl shadow-sm border border-slate-200 p-6 overflow-hidden print:break-after-page print:border-none print:shadow-none print:p-0 ${index > 0 ? 'print:pt-4' : ''}`}>
@@ -1101,8 +1171,8 @@ export default function App() {
                     
                     {data.type === 'knockout' ? (
                         <div className="flex gap-4 items-center overflow-x-auto p-4 bg-slate-50/50 rounded-xl border border-slate-100 shadow-inner min-h-[300px] print:bg-transparent print:border-none print:shadow-none">
-                            {[...new Set(catMatches.filter(m => m.stage === 'ko').map(m => m.koRound))].sort((a,b)=>b-a).map(r => {
-                                const mInRound = catMatches.filter(m => m.koRound === r).sort((a,b)=>a.matchIndex - b.matchIndex);
+                            {[...new Set(koMatches.map(m => m.koRound))].sort((a,b)=>b-a).map(r => {
+                                const mInRound = koMatches.filter(m => m.koRound === r).sort((a,b)=>a.matchIndex - b.matchIndex);
                                 return (
                                     <div key={r} className="flex flex-col gap-6 justify-around min-w-[200px] h-full">
                                         {mInRound.map(m => (
@@ -1135,6 +1205,7 @@ export default function App() {
                         </div>
                     ) : (
                         <div className="flex flex-col lg:flex-row gap-8">
+                          {/* Groups */}
                           {Object.keys(data.groups || {}).length > 0 && (
                             <div className="flex-1 space-y-4">
                               <h4 className="font-semibold text-slate-600 flex items-center gap-2">Gruppenphase (Standings)</h4>
@@ -1192,24 +1263,29 @@ export default function App() {
                             </div>
                           )}
                           
-                          {(semis.length > 0 || final) && (
+                          {/* Generic K.O. Rendering for Standard Mode */}
+                          {hasKo && (
                             <div className="flex-1 border-l border-slate-100 pl-0 lg:pl-8 mt-8 lg:mt-0 print:border-none print:pl-0">
                               <h4 className="font-semibold text-slate-600 mb-4 print:hidden">K.O.-Runde</h4>
                               <div className="flex gap-4 items-center h-full min-h-[200px] bg-slate-50/50 rounded-xl border border-slate-100 p-6 overflow-x-auto relative shadow-inner print:bg-transparent print:border-none print:shadow-none print:p-0">
-                                {semis.length > 0 && (
-                                  <div className="flex flex-col gap-6 justify-around min-w-[200px]">
-                                    {semis.map((semi, i) => (
-                                      <div key={i} className="bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10 print:shadow-none">
-                                        <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">{semi.name}</div>
-                                        <div className={`break-words p-1 rounded ${semi.winner === semi.player1 ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{semi.player1}</div>
-                                        <div className="border-t border-slate-100 my-1"></div>
-                                        <div className={`break-words p-1 rounded ${semi.winner === semi.player2 ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{semi.player2}</div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
+                                
+                                {[...new Set(koMatches.map(m => m.koRound))].sort((a,b)=>b-a).map(r => {
+                                    const mInRound = koMatches.filter(m => m.koRound === r).sort((a,b)=>a.matchIndex - b.matchIndex);
+                                    return (
+                                        <div key={r} className="flex flex-col gap-6 justify-around min-w-[200px] h-full">
+                                            {mInRound.map(m => (
+                                                <div key={m.id} className={`bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10 ${m.score === 'Freilos' ? 'opacity-50 print:opacity-100 print:border-dashed' : ''} print:shadow-none`}>
+                                                    <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">{m.name}</div>
+                                                    <div className={`break-words p-1 rounded ${m.winner === m.player1 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player1}</div>
+                                                    <div className="border-t border-slate-100 my-1"></div>
+                                                    <div className={`break-words p-1 rounded ${m.winner === m.player2 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player2}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )
+                                })}
     
-                                {semis.length > 0 && final && (
+                                {koMatches.length > 0 && final && (
                                   <div className="flex-1 flex justify-center text-slate-300 print:hidden"><ChevronRight size={32} /></div>
                                 )}
     
