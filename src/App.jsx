@@ -848,7 +848,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-teal-200">
       <header className="bg-teal-700 text-white shadow-md print:hidden">
-        <div className="max-w-6xl mx-auto px-4 py-6">
+        <div className="w-full px-4 md:px-8 py-6">
           <div className="flex items-center gap-3">
             <Trophy className="w-8 h-8 text-yellow-400" />
             <div>
@@ -859,7 +859,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className="w-full px-4 md:px-8 py-8">
         <div className="flex flex-wrap gap-2 mb-8 border-b border-slate-200 pb-2 print:hidden">
           <TabButton active={activeTab === 'participants'} onClick={() => setActiveTab('participants')} icon={<Users size={18} />} label="Teilnehmer" />
           <TabButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings size={18} />} label="Einstellungen" />
@@ -875,7 +875,7 @@ export default function App() {
                   <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
                     <Users className="text-teal-600" /> Meldelisten
                   </h2>
-                  <div className="text-slate-600 text-sm bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500 max-w-3xl">
+                  <div className="text-slate-600 text-sm bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500 w-full">
                     <p className="mb-1">Tragen Sie die Teilnehmer (ein Name pro Zeile) ein. Für Doppel trennen Sie Partner mit einem Schrägstrich (z.B. <code>Max / Moritz</code>).</p>
                     <p><b>Spielstärke (Seeding):</b> Um faire Gruppen zu bilden, können Sie hinter dem Namen ein Komma und einen Stärkewert angeben (z.B. <code>Max Mustermann, 3</code>).</p>
                   </div>
@@ -984,7 +984,7 @@ export default function App() {
 
         {activeTab === 'settings' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-w-3xl mx-auto">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 w-full">
               <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
                 <Settings className="text-teal-600" /> Turniereinstellungen
               </h2>
