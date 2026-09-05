@@ -1,5 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, Settings, Trophy, Clock, AlertCircle, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X } from 'lucide-react';
+import { Calendar, Users, Settings, Trophy, Clock, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X, Monitor, LogIn, Lock, Cloud, CloudUpload, CloudDownload, Info } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+
+// Initialize Firebase (Outside Component)
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+  apiKey: "AIzaSyA_jvqZQT8dR39ofvCn63j_v66z4VjhmoY",
+  authDomain: "vereinsmeisterschaft2026.firebaseapp.com",
+  projectId: "vereinsmeisterschaft2026",
+  storageBucket: "vereinsmeisterschaft2026.firebasestorage.app",
+  messagingSenderId: "729427412928",
+  appId: "1:729427412928:web:3147486e27718bcbc36a25"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'tc-wannweil-2026';
 
 const DEFAULT_CATEGORIES = [
   "Herren-Einzel-U60",
@@ -38,6 +55,66 @@ const getKnockoutSeeds = (size) => {
 };
 
 const getRoundName = (rs) => rs === 4 ? 'VF' : (rs === 2 ? 'HF' : (rs === 8 ? 'AF' : `R${rs*2}`));
+
+function SimpleQRCode({ value, size = 100 }) {
+  const hashString = (str) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash);
+  };
+
+  const seed = hashString(value || 'tc-wannweil');
+  const modules = 21; 
+  const cellSize = size / modules;
+  
+  let rects = [];
+  const isFinder = (r, c) => {
+    return (r <= 6 && c <= 6) || (r <= 6 && c >= modules - 7) || (r >= modules - 7 && c <= 6);
+  };
+
+  for (let r = 0; r < modules; r++) {
+    for (let c = 0; c < modules; c++) {
+      if (isFinder(r, c)) {
+        const isOuter = r === 0 || r === 6 || c === 0 || c === 6 || r === modules - 7 || r === modules - 1 || c === modules - 7 || c === modules - 1;
+        const isInner = (r >= 2 && r <= 4 && c >= 2 && c <= 4) || (r >= 2 && r <= 4 && c >= modules - 5 && c <= modules - 3) || (r >= modules - 5 && r <= modules - 3 && c >= 2 && c <= 4);
+      }
+    }
+  }
+
+  for (let r = 0; r < modules; r++) {
+    for (let c = 0; c < modules; c++) {
+      if (!isFinder(r, c)) {
+        let bit = ((seed + r * 31 + c * 17) % 3 === 0);
+        if (bit) {
+          rects.push(<rect key={`${r}-${c}`} x={c * cellSize} y={r * cellSize} width={cellSize} height={cellSize} fill="#0f172a" />);
+        }
+      }
+    }
+  }
+
+  const renderFinder = (x, y) => {
+    return (
+      <g key={`finder-${x}-${y}`}>
+        <rect x={x * cellSize} y={y * cellSize} width={7 * cellSize} height={7 * cellSize} fill="#0f172a" rx={cellSize} />
+        <rect x={(x + 1) * cellSize} y={(y + 1) * cellSize} width={5 * cellSize} height={5 * cellSize} fill="#ffffff" rx={cellSize} />
+        <rect x={(x + 2) * cellSize} y={(y + 2) * cellSize} width={3 * cellSize} height={3 * cellSize} fill="#0f172a" />
+      </g>
+    );
+  };
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="bg-white p-1 rounded">
+      <rect width={size} height={size} fill="#ffffff" />
+      {renderFinder(0, 0)}
+      {renderFinder(modules - 7, 0)}
+      {renderFinder(0, modules - 7)}
+      {rects}
+    </svg>
+  );
+}
 
 const calculateStandings = (groupName, structure, catMatches) => {
     const groupMatches = catMatches.filter(m => m.stage === 'group' && m.groupName === groupName);
@@ -99,7 +176,6 @@ const processTournamentProgressPure = (currentMatches, structures, activeCategor
             });
         }
 
-        // Dynamische Auflösung der Gruppen-Platzhalter für die K.O.-Runde
         if (groupsDone) {
             catMatches.forEach(m => {
                 if (m.stage === 'ko' || m.stage === 'final') {
@@ -129,7 +205,6 @@ const processTournamentProgressPure = (currentMatches, structures, activeCategor
                 }
             });
         } else {
-            // Fallback: Wenn Gruppen nicht fertig sind, Platzhalter wiederherstellen
             catMatches.forEach(m => {
                 if (m.stage === 'ko' || m.stage === 'final') {
                     let reset = false;
@@ -150,7 +225,6 @@ const processTournamentProgressPure = (currentMatches, structures, activeCategor
             });
         }
 
-        // K.O.-Gewinner in nächste Runden propagieren
         const allKoMatches = catMatches.filter(m => m.stage === 'ko' || (m.stage === 'final' && m.koRound === 1));
         const koRounds = [...new Set(allKoMatches.map(m => m.koRound))].sort((a,b) => b-a); 
         
@@ -220,7 +294,6 @@ const applyTimesToSlots = (slots, matches, startTime, matchDuration, breakDurati
         slot.slotIndex = idx;
         slot.time = formatTime(currentMins);
         
-        // Slot is marked as a "Finals block" if it has finals that are not specifically requested to be short
         let isFinalSlot = slot.matchIds.some(id => matches[id]?.stage === 'final' && !(matches[id] && kinderShortFinals[matches[id].category]));
         slot.slotType = isFinalSlot ? 'final' : 'regular';
         
@@ -316,7 +389,6 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
                 return false;
             });
 
-            // Prioritize Kinder categories
             readyMatches.sort((a, b) => {
                 const aK = kinderCategories.includes(a.category);
                 const bK = kinderCategories.includes(b.category);
@@ -345,7 +417,6 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
                         for(let i=0; i<numCourts; i++) if(slot.courts[i] === null) emptyCourts.push(i);
                         
                         if (emptyCourts.length > 0) {
-                            // Try to leave courts free that are required by pending Kinder matches
                             let pendingKinderCourts = new Set(
                                 pendingPhase1
                                     .filter(pm => kinderCategories.includes(pm.category))
@@ -483,7 +554,223 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
     return combinedSlots;
 };
 
+function MonitorView({ timeSlots, matchData, onExit, currentUrl }) {
+  const [currentSlotIndex, setCurrentSlotIndex] = useState(0);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!timeSlots || timeSlots.length === 0) return;
+    
+    const updateCurrentSlot = () => {
+        const now = new Date();
+        const currentMins = now.getHours() * 60 + now.getMinutes();
+        
+        let foundIndex = timeSlots.length - 1;
+        for (let i = 0; i < timeSlots.length; i++) {
+            const endMins = parseTime(timeSlots[i].endTime);
+            if (currentMins < endMins) {
+                foundIndex = i;
+                break;
+            }
+        }
+        setCurrentSlotIndex(Math.max(0, foundIndex));
+    };
+    
+    updateCurrentSlot();
+    const interval = setInterval(updateCurrentSlot, 30000); 
+    return () => clearInterval(interval);
+  }, [timeSlots]);
+
+  if (!timeSlots || timeSlots.length === 0) {
+      return (
+          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-slate-100 relative">
+             <button onClick={onExit} className="absolute top-6 right-6 p-3 rounded-full hover:bg-slate-700 text-slate-400 transition-colors">
+                <X size={24} />
+             </button>
+             <Trophy className="w-24 h-24 text-teal-500 mb-6" />
+             <h1 className="text-4xl font-bold mb-4">TC Wannweil Vereinsmeisterschaft</h1>
+             <p className="text-xl text-slate-400">Es wurde noch kein Spielplan generiert.</p>
+          </div>
+      );
+  }
+
+  const currentSlot = timeSlots[currentSlotIndex];
+  const nextSlot = timeSlots[currentSlotIndex + 1];
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans relative overflow-hidden">
+        <header className="bg-slate-800 p-6 flex justify-between items-center shadow-lg border-b border-slate-700">
+            <div className="flex items-center gap-4">
+                <Trophy className="w-10 h-10 text-teal-400" />
+                <div>
+                    <h1 className="text-3xl font-black tracking-tight text-white">TC Wannweil</h1>
+                    <p className="text-teal-400 text-lg font-medium">Live Spielplan</p>
+                </div>
+            </div>
+            <div className="flex items-center gap-6">
+                <div className="text-right">
+                    <div className="text-3xl font-bold font-mono">{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                    <div className="text-sm text-slate-400 font-medium">Aktuelle Uhrzeit</div>
+                </div>
+                <button onClick={onExit} className="p-3 rounded-full hover:bg-slate-700 text-slate-400 transition-colors" title="Monitoransicht beenden & Ausloggen">
+                    <X size={24} />
+                </button>
+            </div>
+        </header>
+
+        <div className="flex-1 p-8 flex flex-col gap-8 overflow-y-auto pb-32">
+            {currentSlot && (
+                <section className="bg-slate-800 rounded-2xl p-6 shadow-2xl border border-teal-900/50">
+                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-white">
+                        <span className="bg-teal-500 text-white px-3 py-1 rounded-lg uppercase tracking-wider text-sm">Aktuell</span>
+                        <Clock className="text-teal-400" /> {currentSlot.time} - {currentSlot.endTime} Uhr
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        {currentSlot.matchIds.map(id => {
+                            const match = matchData[id];
+                            if (!match) return null;
+                            return <MonitorMatchCard key={id} match={match} />
+                        })}
+                    </div>
+                </section>
+            )}
+
+            {nextSlot && (
+                <section className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700">
+                    <h2 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-300">
+                        <span className="bg-slate-700 text-slate-300 px-3 py-1 rounded-lg uppercase tracking-wider text-sm">Als nächstes</span>
+                        <Clock className="text-slate-400" /> {nextSlot.time} - {nextSlot.endTime} Uhr
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 opacity-70">
+                        {nextSlot.matchIds.map(id => {
+                            const match = matchData[id];
+                            if (!match) return null;
+                            return <MonitorMatchCard key={id} match={match} />
+                        })}
+                    </div>
+                </section>
+            )}
+        </div>
+
+        <div className="absolute bottom-6 right-6 bg-white p-4 rounded-xl shadow-2xl flex flex-col items-center gap-2 border-4 border-slate-800">
+            <SimpleQRCode value={currentUrl} size={100} />
+            <span className="text-[10px] font-bold text-slate-800 uppercase tracking-wider">Plan auf dem Handy</span>
+        </div>
+    </div>
+  );
+}
+
+function MonitorMatchCard({ match }) {
+    const isPlaceholder = match.player1.includes('Gruppe') || match.player1.includes('Sieger') || match.player1.includes('Platz');
+    
+    return (
+        <div className={`rounded-xl p-5 flex flex-col gap-3 h-full border-2 ${match.isFinal ? 'bg-amber-900/20 border-amber-500/50' : 'bg-slate-700/50 border-slate-600'}`}>
+            <div className="flex justify-between items-start">
+                <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-teal-400 uppercase tracking-wider">{match.category}</span>
+                    <span className="text-sm font-medium text-slate-300">{match.type} {match.name && `- ${match.name}`}</span>
+                </div>
+                <div className="bg-slate-900 text-white font-black text-xl w-10 h-10 rounded-lg flex items-center justify-center shadow-inner">
+                    {match.court}
+                </div>
+            </div>
+            
+            <div className="flex flex-col gap-3 mt-2 flex-grow justify-center">
+                <div className={`font-medium text-lg leading-tight break-words ${match.winner === match.player1 ? 'text-teal-300 font-bold' : 'text-white'}`}>
+                    {match.player1}
+                </div>
+                <div className="text-sm text-slate-500 font-serif italic text-center w-full my-[-8px]">vs</div>
+                <div className={`font-medium text-lg leading-tight break-words ${match.winner === match.player2 ? 'text-teal-300 font-bold' : 'text-white'}`}>
+                    {match.player2}
+                </div>
+            </div>
+
+            {match.score && (
+                <div className="mt-3 bg-slate-900/50 py-2 rounded-lg text-center font-bold text-teal-300 tracking-wider">
+                    {match.score}
+                </div>
+            )}
+            
+            {isPlaceholder && !match.score && (
+                 <div className="mt-3 py-2 rounded-lg text-center text-sm font-medium text-slate-500">
+                    {match.isFinal ? 'Finalisten noch offen' : 'Wartet auf Vorrunde'}
+                 </div>
+            )}
+        </div>
+    );
+}
+
+function LoginScreen({ onLogin, onMonitor }) {
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (password === 'tcw2026') {
+            onLogin();
+        } else {
+            setError('Falsches Passwort');
+            setPassword('');
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-100">
+                <div className="flex flex-col items-center mb-8">
+                    <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mb-4">
+                        <Lock className="w-8 h-8 text-teal-600" />
+                    </div>
+                    <h1 className="text-2xl font-bold text-slate-800 text-center">TC Wannweil</h1>
+                    <p className="text-slate-500 text-sm mt-1">Turnierverwaltung & Monitor</p>
+                </div>
+                
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                    <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Passwort (für Verwaltung)</label>
+                        <input 
+                            type="password" 
+                            autoFocus
+                            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-all ${error ? 'border-red-300 bg-red-50' : 'border-slate-300'}`}
+                            value={password}
+                            onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                            placeholder="Passwort eingeben..."
+                        />
+                        {error && <p className="text-red-500 text-xs mt-2 font-medium">{error}</p>}
+                    </div>
+                    <button type="submit" className="w-full bg-teal-600 text-white font-bold py-3 rounded-lg hover:bg-teal-700 transition-colors flex items-center justify-center gap-2 mt-2">
+                        <LogIn size={18} /> Verwaltung starten
+                    </button>
+                </form>
+                
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                    <button onClick={onMonitor} className="w-full bg-slate-800 text-white font-bold py-3 rounded-lg hover:bg-slate-700 transition-colors flex items-center justify-center gap-2">
+                        <Monitor size={18} /> Nur Monitor-Ansicht
+                    </button>
+                    <p className="text-center text-xs text-slate-400 mt-3">Ideal für Smartphones oder den TV im Vereinsheim.</p>
+                </div>
+            </div>
+            
+            <div className="mt-8 text-center text-xs text-slate-400">
+                Standardpasswort: tcw2026
+            </div>
+        </div>
+    );
+}
+
 export default function App() {
+  const [firebaseUser, setFirebaseUser] = useState(null);
+  const [isFirebaseInitialized, setIsFirebaseInitialized] = useState(false);
+  const [isSavingToCloud, setIsSavingToCloud] = useState(false);
+
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [viewMode, setViewMode] = useState('manage'); 
+  
   const [activeTab, setActiveTab] = useState('participants');
   
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
@@ -498,23 +785,6 @@ export default function App() {
   
   const [categoryModes, setCategoryModes] = useState({});
   const [groupCounts, setGroupCounts] = useState({});
-
-  const getMode = (cat) => categoryModes[cat] || 'standard';
-  const getGroupCount = (cat) => groupCounts[cat] || 'auto';
-
-  const setCategoryMode = (cat, mode) => {
-      setCategoryModes(prev => ({ ...prev, [cat]: mode }));
-      setTimeSlots(null);
-      setTournamentStructures(null);
-      setMatchData({});
-  };
-
-  const setGroupCount = (cat, countStr) => {
-      setGroupCounts(prev => ({ ...prev, [cat]: countStr }));
-      setTimeSlots(null);
-      setTournamentStructures(null);
-      setMatchData({});
-  };
 
   const [startTime, setStartTime] = useState('09:00');
   const [numCourts, setNumCourts] = useState(6);
@@ -536,7 +806,159 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   
   const fileInputRef = useRef(null);
+  const currentUrl = window.location.href;
 
+  // 1. Setup Firebase Auth
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Firebase Auth Error:", error);
+      }
+    };
+    initAuth();
+    
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setFirebaseUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Load from Firebase Function
+  const loadFromCloud = async () => {
+      if (!firebaseUser) return;
+      try {
+          const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentData', 'main');
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+              const data = snap.data();
+              if (data.__categories) setCategories(data.__categories);
+              if (data.__grandFinals) setGrandFinals(data.__grandFinals);
+              if (data.__kinderCategories) setKinderCategories(data.__kinderCategories);
+              if (data.__kinderCourts) setKinderCourts(data.__kinderCourts);
+              if (data.__kinderShortFinals) setKinderShortFinals(data.__kinderShortFinals);
+              if (data.__categoryModes) setCategoryModes(data.__categoryModes);
+              if (data.__groupCounts) setGroupCounts(data.__groupCounts);
+              if (data.__settings) {
+                  setScheduleAllFinalsAtEnd(data.__settings.scheduleAllFinalsAtEnd !== undefined ? data.__settings.scheduleAllFinalsAtEnd : true);
+                  setNumCourts(data.__settings.numCourts !== undefined ? data.__settings.numCourts : 6);
+              }
+              if (data.__matchData) setMatchData(data.__matchData);
+              if (data.__tournamentStructures) setTournamentStructures(data.__tournamentStructures);
+              if (data.__timeSlots) setTimeSlots(data.__timeSlots);
+              if (data.__startTime) setStartTime(data.__startTime);
+              if (data.__matchDuration) setMatchDuration(data.__matchDuration);
+              if (data.__breakDuration) setBreakDuration(data.__breakDuration);
+              if (data.__finalDuration) setFinalDuration(data.__finalDuration);
+              
+              const loadedParticipants = {};
+              (data.__categories || DEFAULT_CATEGORIES).forEach(cat => {
+                  if (data[cat] !== undefined) loadedParticipants[cat] = data[cat];
+              });
+              setParticipants(loadedParticipants);
+          }
+      } catch (e) {
+          console.error("Error loading from cloud", e);
+      }
+  };
+
+  // 3. Auto-load on initialization
+  useEffect(() => {
+      if (firebaseUser && !isFirebaseInitialized) {
+          loadFromCloud().then(() => setIsFirebaseInitialized(true));
+      }
+  }, [firebaseUser, isFirebaseInitialized]);
+
+  // 4. Setup Real-time Listener (Crucial for Monitor View)
+  useEffect(() => {
+      if (!firebaseUser) return;
+      const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentData', 'main');
+      const unsub = onSnapshot(docRef, (snap) => {
+          if (snap.exists()) {
+              const data = snap.data();
+              // Auto-sync everything for Monitor, or just matches/slots for Manage
+              if (viewMode === 'monitor') {
+                  if (data.__timeSlots) setTimeSlots(data.__timeSlots);
+                  if (data.__matchData) setMatchData(data.__matchData);
+                  if (data.__tournamentStructures) setTournamentStructures(data.__tournamentStructures);
+              }
+          }
+      }, (error) => console.error("Snapshot error:", error));
+      
+      return () => unsub();
+  }, [firebaseUser, viewMode]);
+
+  // 5. Save to Firebase Function
+  const saveToCloud = async (overrideState = null) => {
+      if (!firebaseUser) return;
+      setIsSavingToCloud(true);
+      try {
+          const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentData', 'main');
+          const dataToSave = overrideState || {
+              ...participants,
+              __categories: categories,
+              __grandFinals: grandFinals,
+              __kinderCategories: kinderCategories,
+              __kinderCourts: kinderCourts,
+              __kinderShortFinals: kinderShortFinals,
+              __categoryModes: categoryModes,
+              __groupCounts: groupCounts,
+              __settings: { scheduleAllFinalsAtEnd, numCourts },
+              __matchData: matchData,
+              __tournamentStructures: tournamentStructures,
+              __timeSlots: timeSlots,
+              __startTime: startTime,
+              __matchDuration: matchDuration,
+              __breakDuration: breakDuration,
+              __finalDuration: finalDuration,
+          };
+          await setDoc(docRef, dataToSave);
+      } catch(e) {
+          console.error("Error saving to cloud", e);
+      }
+      setIsSavingToCloud(false);
+  };
+
+  const getMode = (cat) => categoryModes[cat] || 'standard';
+  const getGroupCount = (cat) => groupCounts[cat] || 'auto';
+
+  const setCategoryMode = (cat, mode) => {
+      setCategoryModes(prev => ({ ...prev, [cat]: mode }));
+      setTimeSlots(null); setTournamentStructures(null); setMatchData({});
+  };
+
+  const setGroupCount = (cat, countStr) => {
+      setGroupCounts(prev => ({ ...prev, [cat]: countStr }));
+      setTimeSlots(null); setTournamentStructures(null); setMatchData({});
+  };
+
+  if (!isAuthenticated && viewMode !== 'monitor') {
+      return (
+          <LoginScreen 
+              onLogin={() => setIsAuthenticated(true)} 
+              onMonitor={() => { setIsAuthenticated(true); setViewMode('monitor'); }} 
+          />
+      );
+  }
+
+  if (viewMode === 'monitor') {
+      return <MonitorView 
+          timeSlots={timeSlots} 
+          matchData={matchData} 
+          onExit={() => { 
+              setIsAuthenticated(false); 
+              setViewMode('manage'); 
+          }} 
+          currentUrl={currentUrl} 
+      />;
+  }
+
+  // Backup Manual JSON Handlers
   const handleSaveParticipants = () => {
     const dataToSave = { 
         ...participants, 
@@ -583,23 +1005,14 @@ export default function App() {
         if (loadedData.__groupCounts) { setGroupCounts(loadedData.__groupCounts); delete loadedData.__groupCounts; }
         
         if (loadedData.__settings) {
-            if (loadedData.__settings.scheduleAllFinalsAtEnd !== undefined) {
-                setScheduleAllFinalsAtEnd(loadedData.__settings.scheduleAllFinalsAtEnd);
-            }
-            if (loadedData.__settings.numCourts !== undefined) {
-                setNumCourts(loadedData.__settings.numCourts);
-            }
+            if (loadedData.__settings.scheduleAllFinalsAtEnd !== undefined) setScheduleAllFinalsAtEnd(loadedData.__settings.scheduleAllFinalsAtEnd);
+            if (loadedData.__settings.numCourts !== undefined) setNumCourts(loadedData.__settings.numCourts);
             delete loadedData.__settings;
         }
 
-        if (loadedData.__matchData) { setMatchData(loadedData.__matchData); delete loadedData.__matchData; } 
-        else { setMatchData({}); }
-
-        if (loadedData.__tournamentStructures) { setTournamentStructures(loadedData.__tournamentStructures); delete loadedData.__tournamentStructures; } 
-        else { setTournamentStructures(null); }
-
-        if (loadedData.__timeSlots) { setTimeSlots(loadedData.__timeSlots); delete loadedData.__timeSlots; } 
-        else { setTimeSlots(null); }
+        if (loadedData.__matchData) { setMatchData(loadedData.__matchData); delete loadedData.__matchData; } else { setMatchData({}); }
+        if (loadedData.__tournamentStructures) { setTournamentStructures(loadedData.__tournamentStructures); delete loadedData.__tournamentStructures; } else { setTournamentStructures(null); }
+        if (loadedData.__timeSlots) { setTimeSlots(loadedData.__timeSlots); delete loadedData.__timeSlots; } else { setTimeSlots(null); }
 
         const loadedCategories = Object.keys(loadedData);
         setCategories(prev => Array.from(new Set([...prev, ...loadedCategories])));
@@ -618,9 +1031,7 @@ export default function App() {
           setCategories(prev => [...prev, name]);
           setParticipants(prev => ({ ...prev, [name]: '' }));
           setNewCategoryName('');
-          setTimeSlots(null);
-          setTournamentStructures(null);
-          setMatchData({});
+          setTimeSlots(null); setTournamentStructures(null); setMatchData({});
       }
   };
 
@@ -753,7 +1164,33 @@ export default function App() {
       nextMatches[matchId].winner = winner;
       
       nextMatches = processTournamentProgressPure(nextMatches, tournamentStructures, categories);
-      setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals));
+      
+      setTimeSlots(prevSlots => {
+          const newSlots = buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals);
+          
+          // Auto-save to cloud on match update
+          if (firebaseUser) {
+              saveToCloud({
+                  ...participants,
+                  __categories: categories,
+                  __grandFinals: grandFinals,
+                  __kinderCategories: kinderCategories,
+                  __kinderCourts: kinderCourts,
+                  __kinderShortFinals: kinderShortFinals,
+                  __categoryModes: categoryModes,
+                  __groupCounts: groupCounts,
+                  __settings: { scheduleAllFinalsAtEnd, numCourts },
+                  __matchData: nextMatches,
+                  __tournamentStructures: tournamentStructures,
+                  __timeSlots: newSlots,
+                  __startTime: startTime,
+                  __matchDuration: matchDuration,
+                  __breakDuration: breakDuration,
+                  __finalDuration: finalDuration,
+              });
+          }
+          return newSlots;
+      });
       
       return nextMatches;
     });
@@ -763,7 +1200,32 @@ export default function App() {
     setMatchData(prevMatches => {
         let nextMatches = JSON.parse(JSON.stringify(prevMatches));
         nextMatches[matchId].manualTime = newTime;
-        setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals));
+        
+        setTimeSlots(prevSlots => {
+            const newSlots = buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals);
+            if (firebaseUser) {
+                saveToCloud({
+                    ...participants,
+                    __categories: categories,
+                    __grandFinals: grandFinals,
+                    __kinderCategories: kinderCategories,
+                    __kinderCourts: kinderCourts,
+                    __kinderShortFinals: kinderShortFinals,
+                    __categoryModes: categoryModes,
+                    __groupCounts: groupCounts,
+                    __settings: { scheduleAllFinalsAtEnd, numCourts },
+                    __matchData: nextMatches,
+                    __tournamentStructures: tournamentStructures,
+                    __timeSlots: newSlots,
+                    __startTime: startTime,
+                    __matchDuration: matchDuration,
+                    __breakDuration: breakDuration,
+                    __finalDuration: finalDuration,
+                });
+            }
+            return newSlots;
+        });
+        
         return nextMatches;
     });
   };
@@ -847,7 +1309,6 @@ export default function App() {
           else numGroups = 2;
       }
       
-      // Begrenzen, damit Gruppen nicht leer bleiben (mindestens ca. 1.5 Spieler pro Gruppe)
       numGroups = Math.max(1, Math.min(numGroups, Math.floor(count / 2) || 1));
 
       catStructure.type = mode === 'group_only' ? 'group-only' : 'standard';
@@ -856,17 +1317,15 @@ export default function App() {
       if (numGroups === 1) {
           groupNames = ['Gruppe 1'];
       } else {
-          groupNames = Array.from({length: numGroups}, (_, i) => `Gruppe ${String.fromCharCode(65 + i)}`); // A, B, C...
+          groupNames = Array.from({length: numGroups}, (_, i) => `Gruppe ${String.fromCharCode(65 + i)}`); 
       }
 
       groupNames.forEach(gn => catStructure.groups[gn] = []);
       
-      // Verteile Spieler abwechselnd auf Gruppen (Round Robin Seeding)
       players.forEach((p, i) => {
           catStructure.groups[groupNames[i % numGroups]].push(p);
       });
 
-      // Generiere Gruppenspiele
       let groupMatches = [];
       groupNames.forEach(gn => {
           const gPlayers = catStructure.groups[gn];
@@ -888,14 +1347,12 @@ export default function App() {
           };
       });
 
-      // K.O. Phase nach Gruppen (sofern nicht 'group_only')
       if (mode !== 'group_only') {
           let advancers = [];
           if (numGroups === 1) {
               let numAdvancing = count >= 4 ? 4 : 2;
               for(let i=1; i<=numAdvancing; i++) advancers.push(`${i}. Gruppe 1`);
           } else {
-              // Bei mehreren Gruppen kommen die Top 2 weiter
               for(let i=0; i<numGroups; i++) advancers.push(`1. ${groupNames[i]}`);
               for(let i=0; i<numGroups; i++) advancers.push(`2. ${groupNames[i]}`);
           }
@@ -994,6 +1451,29 @@ export default function App() {
       setTournamentStructures(finalStructures);
       setMatchData(finalMatches);
       setTimeSlots(finalSlots);
+      
+      // Auto-save generated schedule to cloud
+      if (firebaseUser) {
+          saveToCloud({
+              ...participants,
+              __categories: categories,
+              __grandFinals: grandFinals,
+              __kinderCategories: kinderCategories,
+              __kinderCourts: kinderCourts,
+              __kinderShortFinals: kinderShortFinals,
+              __categoryModes: categoryModes,
+              __groupCounts: groupCounts,
+              __settings: { scheduleAllFinalsAtEnd, numCourts },
+              __matchData: finalMatches,
+              __tournamentStructures: finalStructures,
+              __timeSlots: finalSlots,
+              __startTime: startTime,
+              __matchDuration: matchDuration,
+              __breakDuration: breakDuration,
+              __finalDuration: finalDuration,
+          });
+      }
+
       setIsGenerating(false);
       setActiveTab('schedule');
     }, 800);
@@ -1002,13 +1482,21 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-teal-200">
       <header className="bg-teal-700 text-white shadow-md print:hidden">
-        <div className="w-full px-4 md:px-8 py-6">
+        <div className="w-full px-4 md:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <Trophy className="w-8 h-8 text-yellow-400" />
             <div>
               <h1 className="text-2xl font-bold tracking-tight">TC Wannweil</h1>
               <p className="text-teal-100 text-sm font-medium">Vereinsmeisterschaft - Turnierplaner</p>
             </div>
+          </div>
+          <div className="flex gap-2">
+             <button onClick={() => setViewMode('monitor')} className="flex items-center gap-2 bg-teal-800 hover:bg-teal-900 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-teal-600">
+                <Monitor size={18} /> Monitor-Ansicht
+             </button>
+             <button onClick={() => setIsAuthenticated(false)} className="flex items-center gap-2 bg-teal-800 hover:bg-teal-900 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-teal-600">
+                <LogIn size={18} className="rotate-180" /> Logout
+             </button>
           </div>
         </div>
       </header>
@@ -1035,14 +1523,26 @@ export default function App() {
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2 shrink-0">
-                  <input type="file" accept=".json" ref={fileInputRef} onChange={handleLoadParticipants} className="hidden" />
-                  <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-teal-200" title="Turnierstand laden (.json)">
-                    <Upload size={16} /> Laden
-                  </button>
-                  <button onClick={handleSaveParticipants} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-teal-200" title="Turnierstand & Spielplan speichern (.json)">
-                    <Download size={16} /> Speichern
-                  </button>
+                <div className="flex flex-col gap-2 shrink-0">
+                  <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-lg border border-slate-200">
+                      <button onClick={() => saveToCloud()} disabled={isSavingToCloud} className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-md text-sm font-bold transition-colors shadow-sm disabled:opacity-50" title="Stand in der Cloud speichern (Für Monitor)">
+                          {isSavingToCloud ? <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div> : <CloudUpload size={16} className="text-teal-600" />} Cloud Save
+                      </button>
+                      <button onClick={loadFromCloud} className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-md text-sm font-bold transition-colors shadow-sm" title="Letzten Stand aus der Cloud laden">
+                          <CloudDownload size={16} className="text-slate-500" /> Laden
+                      </button>
+                  </div>
+                  
+                  <div className="flex items-center justify-end gap-2 text-xs">
+                      <input type="file" accept=".json" ref={fileInputRef} onChange={handleLoadParticipants} className="hidden" />
+                      <button onClick={() => fileInputRef.current?.click()} className="text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1" title="Lokales JSON laden">
+                          <Upload size={12} /> Backup öffnen
+                      </button>
+                      <span className="text-slate-300">|</span>
+                      <button onClick={handleSaveParticipants} className="text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1" title="Als lokales JSON speichern">
+                          <Download size={12} /> Backup speichern
+                      </button>
+                  </div>
                 </div>
               </div>
 
@@ -1225,7 +1725,14 @@ export default function App() {
                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                  <Calendar className="text-teal-600" /> Offizieller Spielplan
                </h2>
-               <button onClick={() => window.print()} className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors hidden md:block print:hidden">Plan Drucken</button>
+               <div className="flex gap-2">
+                   <button onClick={() => setViewMode('monitor')} className="bg-teal-100 hover:bg-teal-200 text-teal-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                     <Monitor size={16} /> Monitor
+                   </button>
+                   <button onClick={() => window.print()} className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors hidden md:block">
+                     Plan Drucken
+                   </button>
+               </div>
             </div>
 
             <div className="hidden print:block">
@@ -1353,7 +1860,6 @@ export default function App() {
                         </div>
                     ) : (
                         <div className="flex flex-col lg:flex-row gap-8">
-                          {/* Groups */}
                           {Object.keys(data.groups || {}).length > 0 && (
                             <div className="flex-1 space-y-4">
                               <h4 className="font-semibold text-slate-600 flex items-center gap-2">Gruppenphase (Standings)</h4>
@@ -1411,7 +1917,6 @@ export default function App() {
                             </div>
                           )}
                           
-                          {/* Generic K.O. Rendering for Standard Mode */}
                           {hasKo && (
                             <div className="flex-1 border-l border-slate-100 pl-0 lg:pl-8 mt-8 lg:mt-0 print:border-none print:pl-0">
                               <h4 className="font-semibold text-slate-600 mb-4 print:hidden">K.O.-Runde</h4>
