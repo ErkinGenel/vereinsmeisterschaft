@@ -214,21 +214,24 @@ const formatTime = (mins) => {
     return `${h}:${m}`;
 };
 
-const applyTimesToSlots = (slots, matches, startTime, matchDuration, breakDuration, finalDuration) => {
+const applyTimesToSlots = (slots, matches, startTime, matchDuration, breakDuration, finalDuration, kinderShortFinals) => {
     let currentMins = parseTime(startTime);
     slots.forEach((slot, idx) => {
         slot.slotIndex = idx;
         slot.time = formatTime(currentMins);
-        let isFinal = slot.matchIds.some(id => matches[id]?.stage === 'final');
-        slot.slotType = isFinal ? 'final' : 'regular';
-        let duration = isFinal ? finalDuration : matchDuration; 
+        
+        // Slot is marked as a "Finals block" if it has finals that are not specifically requested to be short
+        let isFinalSlot = slot.matchIds.some(id => matches[id]?.stage === 'final' && !(matches[id] && kinderShortFinals[matches[id].category]));
+        slot.slotType = isFinalSlot ? 'final' : 'regular';
+        
+        let duration = isFinalSlot ? finalDuration : matchDuration; 
         slot.endTime = formatTime(currentMins + duration);
         currentMins += duration + breakDuration; 
     });
     return slots;
 };
 
-const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinalCategories, scheduleAllFinalsAtEnd) => {
+const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinalCategories, scheduleAllFinalsAtEnd, kinderCategories = [], kinderCourts = {}, kinderShortFinals = {}) => {
     let allMatches = Object.values(matches);
     let finishedIds = new Set(allMatches.filter(m => m.winner || m.score === 'Freilos').map(m => m.id));
 
@@ -247,26 +250,36 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
     let slots = [];
 
     const getSlot = (idx) => {
-        while (slots.length <= idx) slots.push({ matchIds: [], activePlayers: new Set() });
+        while (slots.length <= idx) slots.push({ courts: new Array(numCourts).fill(null), activePlayers: new Set() });
         return slots[idx];
     };
 
     Object.entries(lockedPlacement).forEach(([idStr, sIdx]) => {
         let id = parseInt(idStr);
         let slot = getSlot(sIdx);
-        slot.matchIds.push(id);
-        if (matches[id] && matches[id].score !== 'Freilos') {
-            matches[id].conflictPlayers.forEach(p => slot.activePlayers.add(p));
+        let match = matches[id];
+        
+        let courtIdx = (match && match.court) ? (match.court - 1) : -1;
+        if (courtIdx === -1 || courtIdx >= numCourts || slot.courts[courtIdx] !== null) {
+            courtIdx = slot.courts.findIndex(c => c === null);
+        }
+        if (courtIdx !== -1) {
+            slot.courts[courtIdx] = id;
+            if (match && match.score !== 'Freilos') {
+                match.conflictPlayers.forEach(p => slot.activePlayers.add(p));
+            }
         }
         matchEndSlot[id] = sIdx + 1;
     });
 
-    let pendingPhase1 = allMatches.filter(m => !finishedIds.has(m.id) && !m.manualTime && m.score !== 'Freilos' && !(m.stage === 'final' && (scheduleAllFinalsAtEnd || grandFinalCategories.includes(m.category))));
+    const isGrandFinal = (m) => m.stage === 'final' && !kinderShortFinals[m.category] && (scheduleAllFinalsAtEnd || grandFinalCategories.includes(m.category));
+
+    let pendingPhase1 = allMatches.filter(m => !finishedIds.has(m.id) && !m.manualTime && m.score !== 'Freilos' && !isGrandFinal(m));
     let currentSlotIdx = 0;
 
     while (pendingPhase1.length > 0) {
         let slot = getSlot(currentSlotIdx);
-        let availableCourts = numCourts - slot.matchIds.length;
+        let availableCourts = slot.courts.filter(c => c === null).length;
 
         if (availableCourts > 0) {
             let readyMatches = pendingPhase1.filter(m => {
@@ -277,7 +290,6 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
                     if (prevMatches.length > 0) {
                         return prevMatches.every(pm => (pm.score === 'Freilos' || (matchEndSlot[pm.id] !== undefined && matchEndSlot[pm.id] <= currentSlotIdx)));
                     } else {
-                        // First KO round after groups -> wait for groups to finish
                         const catGroups = allMatches.filter(x => x.category === m.category && x.stage === 'group');
                         if (catGroups.length > 0) {
                             return catGroups.every(g => matchEndSlot[g.id] !== undefined && matchEndSlot[g.id] <= currentSlotIdx);
@@ -304,14 +316,60 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
                 return false;
             });
 
+            // Prioritize Kinder categories
+            readyMatches.sort((a, b) => {
+                const aK = kinderCategories.includes(a.category);
+                const bK = kinderCategories.includes(b.category);
+                if (aK && !bK) return -1;
+                if (!aK && bK) return 1;
+                return 0;
+            });
+
             for (let m of readyMatches) {
-                if (availableCourts === 0) break;
+                if (slot.courts.filter(c => c === null).length === 0) break;
+                
+                const isKinder = kinderCategories.includes(m.category);
+
                 if (!m.conflictPlayers.some(p => slot.activePlayers.has(p))) {
-                    slot.matchIds.push(m.id);
-                    m.conflictPlayers.forEach(p => slot.activePlayers.add(p));
-                    matchEndSlot[m.id] = currentSlotIdx + 1;
-                    pendingPhase1 = pendingPhase1.filter(x => x.id !== m.id);
-                    availableCourts--;
+                    let assignedCourt = -1;
+                    
+                    if (isKinder) {
+                        let targetCourt = kinderCourts[m.category] ?? 0;
+                        if (targetCourt >= numCourts) targetCourt = 0; 
+                        
+                        if (slot.courts[targetCourt] === null) {
+                            assignedCourt = targetCourt;
+                        }
+                    } else {
+                        let emptyCourts = [];
+                        for(let i=0; i<numCourts; i++) if(slot.courts[i] === null) emptyCourts.push(i);
+                        
+                        if (emptyCourts.length > 0) {
+                            // Try to leave courts free that are required by pending Kinder matches
+                            let pendingKinderCourts = new Set(
+                                pendingPhase1
+                                    .filter(pm => kinderCategories.includes(pm.category))
+                                    .map(pm => {
+                                        let c = kinderCourts[pm.category] ?? 0;
+                                        return c >= numCourts ? 0 : c;
+                                    })
+                            );
+                            
+                            let nonReservedCourts = emptyCourts.filter(c => !pendingKinderCourts.has(c));
+                            if (nonReservedCourts.length > 0) {
+                                assignedCourt = nonReservedCourts[0];
+                            } else {
+                                assignedCourt = emptyCourts[0];
+                            }
+                        }
+                    }
+
+                    if (assignedCourt !== -1) {
+                        slot.courts[assignedCourt] = m.id;
+                        m.conflictPlayers.forEach(p => slot.activePlayers.add(p));
+                        matchEndSlot[m.id] = currentSlotIdx + 1;
+                        pendingPhase1 = pendingPhase1.filter(x => x.id !== m.id);
+                    }
                 }
             }
         }
@@ -321,27 +379,68 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
 
     let phase2StartIdx = 0;
     allMatches.forEach(m => {
-        if (!m.manualTime && !(m.stage === 'final' && (scheduleAllFinalsAtEnd || grandFinalCategories.includes(m.category))) && matchEndSlot[m.id]) {
+        if (!m.manualTime && !isGrandFinal(m) && matchEndSlot[m.id]) {
             phase2StartIdx = Math.max(phase2StartIdx, matchEndSlot[m.id]);
         }
     });
 
-    let pendingPhase2 = allMatches.filter(m => !finishedIds.has(m.id) && m.stage === 'final' && !m.manualTime && m.score !== 'Freilos' && (scheduleAllFinalsAtEnd || grandFinalCategories.includes(m.category)));
+    let pendingPhase2 = allMatches.filter(m => !finishedIds.has(m.id) && m.stage === 'final' && !m.manualTime && m.score !== 'Freilos' && isGrandFinal(m));
     currentSlotIdx = phase2StartIdx;
 
     while (pendingPhase2.length > 0) {
         let slot = getSlot(currentSlotIdx);
-        let availableCourts = numCourts - slot.matchIds.length;
+        let availableCourts = slot.courts.filter(c => c === null).length;
 
         if (availableCourts > 0) {
-            for (let m of pendingPhase2) {
-                if (availableCourts === 0) break;
+            let readyFinals = [...pendingPhase2].sort((a, b) => {
+                const aK = kinderCategories.includes(a.category);
+                const bK = kinderCategories.includes(b.category);
+                if (aK && !bK) return -1;
+                if (!aK && bK) return 1;
+                return 0;
+            });
+
+            for (let m of readyFinals) {
+                if (slot.courts.filter(c => c === null).length === 0) break;
+                
+                const isKinder = kinderCategories.includes(m.category);
+
                 if (!m.conflictPlayers.some(p => slot.activePlayers.has(p))) {
-                    slot.matchIds.push(m.id);
-                    m.conflictPlayers.forEach(p => slot.activePlayers.add(p));
-                    matchEndSlot[m.id] = currentSlotIdx + 1;
-                    pendingPhase2 = pendingPhase2.filter(x => x.id !== m.id);
-                    availableCourts--;
+                    let assignedCourt = -1;
+                    if (isKinder) {
+                        let targetCourt = kinderCourts[m.category] ?? 0;
+                        if (targetCourt >= numCourts) targetCourt = 0; 
+                        
+                        if (slot.courts[targetCourt] === null) {
+                            assignedCourt = targetCourt;
+                        }
+                    } else {
+                        let emptyCourts = [];
+                        for(let i=0; i<numCourts; i++) if(slot.courts[i] === null) emptyCourts.push(i);
+                        if (emptyCourts.length > 0) {
+                            let pendingKinderCourts = new Set(
+                                pendingPhase2
+                                    .filter(pm => kinderCategories.includes(pm.category))
+                                    .map(pm => {
+                                        let c = kinderCourts[pm.category] ?? 0;
+                                        return c >= numCourts ? 0 : c;
+                                    })
+                            );
+                            let nonReservedCourts = emptyCourts.filter(c => !pendingKinderCourts.has(c));
+                            if (nonReservedCourts.length > 0) {
+                                assignedCourt = nonReservedCourts[0];
+                            } else {
+                                assignedCourt = emptyCourts[0];
+                            }
+                        }
+                    }
+
+                    if (assignedCourt !== -1) {
+                        slot.courts[assignedCourt] = m.id;
+                        m.conflictPlayers.forEach(p => slot.activePlayers.add(p));
+                        matchEndSlot[m.id] = currentSlotIdx + 1;
+                        pendingPhase2 = pendingPhase2.filter(x => x.id !== m.id);
+                    }
                 }
             }
         }
@@ -349,15 +448,16 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
         if (currentSlotIdx > 300) break;
     }
 
-    let finalSlots = slots.filter(s => s.matchIds.length > 0);
+    let finalSlots = slots.filter(s => s.courts.some(c => c !== null));
     
     finalSlots.forEach(slot => {
-        slot.matchIds.forEach((id, idx) => {
-            if(matches[id]) matches[id].court = idx + 1;
+        slot.matchIds = slot.courts.filter(Boolean);
+        slot.courts.forEach((id, idx) => {
+            if(id && matches[id]) matches[id].court = idx + 1;
         });
     });
 
-    finalSlots = applyTimesToSlots(finalSlots, matches, startTime, matchDuration, breakDuration, finalDuration);
+    finalSlots = applyTimesToSlots(finalSlots, matches, startTime, matchDuration, breakDuration, finalDuration, kinderShortFinals);
 
     let manualMatches = allMatches.filter(m => m.manualTime && m.score !== 'Freilos');
     let manualSlotsMap = {}; 
@@ -392,6 +492,10 @@ export default function App() {
   const [editCategoryName, setEditCategoryName] = useState('');
   
   const [grandFinals, setGrandFinals] = useState(["Herren-Einzel-U60"]);
+  const [kinderCategories, setKinderCategories] = useState([]);
+  const [kinderCourts, setKinderCourts] = useState({});
+  const [kinderShortFinals, setKinderShortFinals] = useState({});
+  
   const [categoryModes, setCategoryModes] = useState({});
   const [groupCounts, setGroupCounts] = useState({});
 
@@ -413,12 +517,12 @@ export default function App() {
   };
 
   const [startTime, setStartTime] = useState('09:00');
-  const [numCourts, setNumCourts] = useState(4);
+  const [numCourts, setNumCourts] = useState(6);
   const [matchDuration, setMatchDuration] = useState(30);
   const [breakDuration, setBreakDuration] = useState(10);
   const [finalDuration, setFinalDuration] = useState(90);
   
-  const [scheduleAllFinalsAtEnd, setScheduleAllFinalsAtEnd] = useState(false);
+  const [scheduleAllFinalsAtEnd, setScheduleAllFinalsAtEnd] = useState(true);
   
   const [participants, setParticipants] = useState(() => {
     const initial = {};
@@ -437,9 +541,12 @@ export default function App() {
     const dataToSave = { 
         ...participants, 
         __grandFinals: grandFinals, 
+        __kinderCategories: kinderCategories,
+        __kinderCourts: kinderCourts,
+        __kinderShortFinals: kinderShortFinals,
         __categoryModes: categoryModes, 
         __groupCounts: groupCounts,
-        __settings: { scheduleAllFinalsAtEnd },
+        __settings: { scheduleAllFinalsAtEnd, numCourts },
         __matchData: matchData,
         __tournamentStructures: tournamentStructures,
         __timeSlots: timeSlots
@@ -462,6 +569,10 @@ export default function App() {
         const loadedData = JSON.parse(e.target.result);
         
         if (loadedData.__grandFinals) { setGrandFinals(loadedData.__grandFinals); delete loadedData.__grandFinals; }
+        if (loadedData.__kinderCategories) { setKinderCategories(loadedData.__kinderCategories); delete loadedData.__kinderCategories; }
+        if (loadedData.__kinderCourts) { setKinderCourts(loadedData.__kinderCourts); delete loadedData.__kinderCourts; }
+        if (loadedData.__kinderShortFinals) { setKinderShortFinals(loadedData.__kinderShortFinals); delete loadedData.__kinderShortFinals; }
+        
         if (loadedData.__categoryModes) { setCategoryModes(loadedData.__categoryModes); delete loadedData.__categoryModes; } 
         else if (loadedData.__koOnly) {
             const migrated = {};
@@ -472,7 +583,12 @@ export default function App() {
         if (loadedData.__groupCounts) { setGroupCounts(loadedData.__groupCounts); delete loadedData.__groupCounts; }
         
         if (loadedData.__settings) {
-            setScheduleAllFinalsAtEnd(loadedData.__settings.scheduleAllFinalsAtEnd || false);
+            if (loadedData.__settings.scheduleAllFinalsAtEnd !== undefined) {
+                setScheduleAllFinalsAtEnd(loadedData.__settings.scheduleAllFinalsAtEnd);
+            }
+            if (loadedData.__settings.numCourts !== undefined) {
+                setNumCourts(loadedData.__settings.numCourts);
+            }
             delete loadedData.__settings;
         }
 
@@ -511,6 +627,11 @@ export default function App() {
   const handleRemoveCategory = (catToRemove) => {
       setCategories(prev => prev.filter(c => c !== catToRemove));
       setGrandFinals(prev => prev.filter(c => c !== catToRemove));
+      
+      setKinderCategories(prev => prev.filter(c => c !== catToRemove));
+      setKinderCourts(prev => { const updated = {...prev}; delete updated[catToRemove]; return updated; });
+      setKinderShortFinals(prev => { const updated = {...prev}; delete updated[catToRemove]; return updated; });
+      
       setCategoryModes(prev => { const updated = { ...prev }; delete updated[catToRemove]; return updated; });
       setGroupCounts(prev => { const updated = { ...prev }; delete updated[catToRemove]; return updated; });
       setParticipants(prev => { const updated = { ...prev }; delete updated[catToRemove]; return updated; });
@@ -524,6 +645,18 @@ export default function App() {
 
       setCategories(prev => prev.map(c => c === oldCat ? newCat : c));
       setGrandFinals(prev => prev.map(c => c === oldCat ? newCat : c));
+      
+      setKinderCategories(prev => prev.map(c => c === oldCat ? newCat : c));
+      setKinderCourts(prev => {
+          const updated = { ...prev };
+          if (updated[oldCat] !== undefined) { updated[newCat] = updated[oldCat]; delete updated[oldCat]; }
+          return updated;
+      });
+      setKinderShortFinals(prev => {
+          const updated = { ...prev };
+          if (updated[oldCat] !== undefined) { updated[newCat] = updated[oldCat]; delete updated[oldCat]; }
+          return updated;
+      });
       
       setCategoryModes(prev => {
           const updated = { ...prev };
@@ -549,6 +682,28 @@ export default function App() {
           if (prev.includes(cat)) return prev.filter(c => c !== cat);
           return [...prev, cat];
       });
+      setTimeSlots(null); setTournamentStructures(null); setMatchData({});
+  };
+
+  const toggleKinderCategory = (cat) => {
+      setKinderCategories(prev => {
+          if (prev.includes(cat)) {
+              setKinderCourts(p => { const o = {...p}; delete o[cat]; return o; });
+              setKinderShortFinals(p => { const o = {...p}; delete o[cat]; return o; });
+              return prev.filter(c => c !== cat);
+          }
+          return [...prev, cat];
+      });
+      setTimeSlots(null); setTournamentStructures(null); setMatchData({});
+  };
+
+  const setKinderCourt = (cat, courtIndex) => {
+      setKinderCourts(prev => ({...prev, [cat]: courtIndex}));
+      setTimeSlots(null); setTournamentStructures(null); setMatchData({});
+  };
+
+  const toggleKinderShortFinal = (cat) => {
+      setKinderShortFinals(prev => ({...prev, [cat]: !prev[cat]}));
       setTimeSlots(null); setTournamentStructures(null); setMatchData({});
   };
 
@@ -598,7 +753,7 @@ export default function App() {
       nextMatches[matchId].winner = winner;
       
       nextMatches = processTournamentProgressPure(nextMatches, tournamentStructures, categories);
-      setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd));
+      setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals));
       
       return nextMatches;
     });
@@ -608,7 +763,7 @@ export default function App() {
     setMatchData(prevMatches => {
         let nextMatches = JSON.parse(JSON.stringify(prevMatches));
         nextMatches[matchId].manualTime = newTime;
-        setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd));
+        setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals));
         return nextMatches;
     });
   };
@@ -688,8 +843,7 @@ export default function App() {
       if (customGroupCount && customGroupCount !== 'auto') {
           numGroups = parseInt(customGroupCount, 10);
       } else {
-          if (category.toLowerCase().includes("kinder")) numGroups = 1;
-          else if (count <= 4) numGroups = 1;
+          if (category.toLowerCase().includes("kinder") || count <= 4) numGroups = 1;
           else numGroups = 2;
       }
       
@@ -835,7 +989,7 @@ export default function App() {
           finalMatches = { ...finalMatches, ...res.initialMatches };
       });
 
-      const finalSlots = buildDynamicSchedule(finalMatches, null, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd);
+      const finalSlots = buildDynamicSchedule(finalMatches, null, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals);
 
       setTournamentStructures(finalStructures);
       setMatchData(finalMatches);
@@ -908,12 +1062,45 @@ export default function App() {
                             <label className="text-sm font-semibold text-slate-700 truncate pr-2" title={cat}>{cat}</label>
                             
                             <div className="flex flex-col gap-1 mb-1">
-                                <label className="flex items-center gap-1 text-[10px] text-slate-500 cursor-pointer hover:text-slate-700 transition-colors" title="Finale als 'Grand Final' am Ende spielen">
-                                    <input type="checkbox" checked={grandFinals.includes(cat)} onChange={() => toggleGrandFinal(cat)} disabled={getMode(cat) === 'group_only'} className="w-3 h-3 text-amber-500 rounded border-slate-300 focus:ring-amber-500 cursor-pointer shrink-0 disabled:opacity-30" />
-                                    <span className={getMode(cat) === 'group_only' ? 'opacity-50' : ''}>Grand Final</span>
-                                </label>
+                                <div className="flex gap-3 items-center">
+                                    <label className="flex items-center gap-1 text-[10px] text-slate-500 cursor-pointer hover:text-slate-700 transition-colors" title="Finale als 'Grand Final' am Ende spielen">
+                                        <input type="checkbox" checked={grandFinals.includes(cat)} onChange={() => toggleGrandFinal(cat)} disabled={getMode(cat) === 'group_only'} className="w-3 h-3 text-amber-500 rounded border-slate-300 focus:ring-amber-500 cursor-pointer shrink-0 disabled:opacity-30" />
+                                        <span className={getMode(cat) === 'group_only' ? 'opacity-50' : ''}>Grand Final</span>
+                                    </label>
 
-                                <div className="flex flex-col gap-1.5 bg-slate-50/70 p-2 rounded border border-slate-100">
+                                    <label className="flex items-center gap-1 text-[10px] text-slate-500 cursor-pointer hover:text-slate-700 transition-colors" title="Als Kinder-Kategorie markieren (Bevorzugt früh & erweiterte Einstellungen)">
+                                        <input type="checkbox" checked={kinderCategories.includes(cat)} onChange={() => toggleKinderCategory(cat)} className="w-3 h-3 text-pink-500 rounded border-slate-300 focus:ring-pink-500 cursor-pointer shrink-0" />
+                                        <span>Kinder</span>
+                                    </label>
+                                </div>
+                                
+                                {kinderCategories.includes(cat) && (
+                                    <div className="flex flex-col gap-1.5 mt-1 ml-4 border-l-2 border-pink-200 pl-2 py-0.5">
+                                        <div className="flex items-center justify-between bg-white/60 p-1.5 rounded border border-slate-100">
+                                            <span className="text-[10px] text-slate-500 font-medium">Fester Platz:</span>
+                                            <select
+                                                value={kinderCourts[cat] ?? 0}
+                                                onChange={(e) => setKinderCourt(cat, parseInt(e.target.value))}
+                                                className="text-[10px] p-0.5 border border-slate-200 rounded text-slate-700 bg-white focus:ring-1 focus:ring-pink-500 outline-none cursor-pointer w-20"
+                                            >
+                                                {Array.from({length: numCourts}).map((_, i) => (
+                                                    <option key={i} value={i}>Platz {i+1}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <label className="flex items-start gap-1.5 text-[10px] text-slate-500 cursor-pointer hover:text-slate-800 transition-colors bg-white/60 p-1.5 rounded border border-slate-100">
+                                            <input
+                                                type="checkbox"
+                                                checked={kinderShortFinals[cat] || false}
+                                                onChange={() => toggleKinderShortFinal(cat)}
+                                                className="w-3 h-3 text-pink-500 rounded border-slate-300 focus:ring-pink-500 cursor-pointer shrink-0 mt-0.5"
+                                            />
+                                            <span className="leading-tight font-medium">Finale mit Vorrunden-Zeit & direkt im Anschluss</span>
+                                        </label>
+                                    </div>
+                                )}
+
+                                <div className="flex flex-col gap-1.5 bg-slate-50/70 p-2 rounded border border-slate-100 mt-1">
                                     <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer hover:text-slate-900 transition-colors">
                                         <input type="radio" name={`mode-${cat}`} checked={getMode(cat) === 'standard'} onChange={() => setCategoryMode(cat, 'standard')} className="w-3 h-3 text-teal-600 focus:ring-teal-500 cursor-pointer" />
                                         Gruppenphase + K.O.
@@ -995,7 +1182,7 @@ export default function App() {
                         <input type="checkbox" checked={scheduleAllFinalsAtEnd} onChange={e => setScheduleAllFinalsAtEnd(e.target.checked)} className="w-5 h-5 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer" />
                         Alle Finals am Ende spielen
                     </label>
-                    <div className="text-sm text-slate-500 md:ml-4">Plant alle Endspiele gesammelt ganz am Ende des Turniers ein.</div>
+                    <div className="text-sm text-slate-500 md:ml-4">Plant alle Endspiele gesammelt ganz am Ende des Turniers ein. (Ausnahme: Kinder-Finals mit aktiver "Vorrunden-Zeit" Einstellung).</div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
