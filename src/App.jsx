@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, Settings, Trophy, Clock, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X, Monitor, LogIn, Lock, Cloud, CloudUpload, CloudDownload, Info } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { Calendar, Users, Settings, Trophy, Clock, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X, Monitor, LogIn, Lock, Cloud, Inbox, ArrowRight } from 'lucide-react';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 
-// Initialize Firebase (Outside Component)
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+// Your web app's Firebase configuration
+const firebaseConfig = {
   apiKey: "AIzaSyA_jvqZQT8dR39ofvCn63j_v66z4VjhmoY",
   authDomain: "vereinsmeisterschaft2026.firebaseapp.com",
   projectId: "vereinsmeisterschaft2026",
@@ -13,10 +13,12 @@ const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__f
   messagingSenderId: "729427412928",
   appId: "1:729427412928:web:3147486e27718bcbc36a25"
 };
-const app = initializeApp(firebaseConfig);
+
+// Initialize Firebase safely (prevents hot-reload crashes causing white screens)
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'tc-wannweil-2026';
+const appId = 'tc-wannweil-2026';
 
 const DEFAULT_CATEGORIES = [
   "Herren-Einzel-U60",
@@ -74,15 +76,6 @@ function SimpleQRCode({ value, size = 100 }) {
   const isFinder = (r, c) => {
     return (r <= 6 && c <= 6) || (r <= 6 && c >= modules - 7) || (r >= modules - 7 && c <= 6);
   };
-
-  for (let r = 0; r < modules; r++) {
-    for (let c = 0; c < modules; c++) {
-      if (isFinder(r, c)) {
-        const isOuter = r === 0 || r === 6 || c === 0 || c === 6 || r === modules - 7 || r === modules - 1 || c === modules - 7 || c === modules - 1;
-        const isInner = (r >= 2 && r <= 4 && c >= 2 && c <= 4) || (r >= 2 && r <= 4 && c >= modules - 5 && c <= modules - 3) || (r >= modules - 5 && r <= modules - 3 && c >= 2 && c <= 4);
-      }
-    }
-  }
 
   for (let r = 0; r < modules; r++) {
     for (let c = 0; c < modules; c++) {
@@ -549,117 +542,314 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
 
     let combinedSlots = [...finalSlots, ...manualSlots];
     combinedSlots.sort((a, b) => parseTime(a.time) - parseTime(b.time));
-    combinedSlots.forEach((slot, idx) => slot.slotIndex = idx);
+    combinedSlots.forEach((slot, idx) => {
+        slot.slotIndex = idx;
+        if (slot.activePlayers) {
+            delete slot.activePlayers;
+        }
+    });
 
     return combinedSlots;
 };
 
-function MonitorView({ timeSlots, matchData, onExit, currentUrl }) {
-  const [currentSlotIndex, setCurrentSlotIndex] = useState(0);
-  const [currentTime, setCurrentTime] = useState(new Date());
+function BracketsView({ categories, tournamentStructures, matchData }) {
+    return (
+        <div className="space-y-8 pb-20 w-full">
+            {categories.map((cat, index) => {
+            const data = tournamentStructures[cat];
+            if (!data) return null;
+            
+            const catMatches = Object.values(matchData).filter(m => m.category === cat);
+            const koMatches = catMatches.filter(m => m.stage === 'ko');
+            const final = catMatches.find(m => m.stage === 'final' && (!m.koRound || m.koRound === 1));
+            const hasKo = koMatches.length > 0 || final;
 
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+            return (
+                <div key={cat} className={`bg-white rounded-xl shadow-sm border border-slate-200 p-6 overflow-hidden print:break-after-page print:border-none print:shadow-none print:p-0 ${index > 0 ? 'print:pt-4' : ''} w-full`}>
+                <h3 className="text-xl font-bold text-teal-700 mb-6 border-b pb-2 flex justify-between items-center text-left">
+                    {cat}
+                    {data.type === 'knockout' && <span className="text-xs bg-teal-100 text-teal-800 px-2 py-1 rounded uppercase tracking-widest font-bold">K.O.-System</span>}
+                </h3>
+                
+                {data.type === 'knockout' ? (
+                    <div className="flex gap-4 items-center overflow-x-auto p-4 bg-slate-50/50 rounded-xl border border-slate-100 shadow-inner min-h-[300px] print:bg-transparent print:border-none print:shadow-none w-full">
+                        {[...new Set(koMatches.map(m => m.koRound))].sort((a,b)=>b-a).map(r => {
+                            const mInRound = koMatches.filter(m => m.koRound === r).sort((a,b)=>a.matchIndex - b.matchIndex);
+                            return (
+                                <div key={r} className="flex flex-col gap-6 justify-around min-w-[200px] h-full text-left">
+                                    {mInRound.map(m => (
+                                        <div key={m.id} className={`bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10 ${m.score === 'Freilos' ? 'opacity-50 print:opacity-100 print:border-dashed' : ''}`}>
+                                            <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">{m.name}</div>
+                                            <div className={`break-words p-1 rounded ${m.winner === m.player1 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player1}</div>
+                                            <div className="border-t border-slate-100 my-1"></div>
+                                            <div className={`break-words p-1 rounded ${m.winner === m.player2 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player2}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )
+                        })}
+                        
+                        {final && (
+                            <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl ml-4 print:bg-transparent print:border-2 text-left">
+                                <div className="text-center text-xs text-amber-600 font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
+                                <div className="bg-white border-2 border-amber-300 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800">
+                                    <div className={`break-words p-1 rounded ${final.winner === final.player1 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player1}</div>
+                                    <div className="border-t border-slate-100 my-1"></div>
+                                    <div className={`break-words p-1 rounded ${final.winner === final.player2 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player2}</div>
+                                </div>
+                                {final.winner && (
+                                    <div className="mt-3 text-center">
+                                        <span className="bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full font-bold shadow-sm print:border print:border-amber-400 print:bg-transparent">Sieger: {final.winner}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="flex flex-col lg:flex-row gap-8 w-full text-left">
+                        {Object.keys(data.groups || {}).length > 0 && (
+                        <div className="flex-1 space-y-4">
+                            <h4 className="font-semibold text-slate-600 flex items-center gap-2">Gruppenphase (Standings)</h4>
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
+                            {Object.keys(data.groups).map((gName, idx) => {
+                                const standings = calculateStandings(gName, data, catMatches);
+                                const groupMatchesForTable = catMatches.filter(m => m.stage === 'group' && m.groupName === gName);
+
+                                return (
+                                <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden shadow-sm flex flex-col print:break-inside-avoid w-full">
+                                    <div className="bg-slate-50 px-4 py-2 font-bold text-sm text-slate-700 border-b flex justify-between print:bg-transparent">
+                                    <span>{gName}</span>
+                                    </div>
+                                    
+                                    <div className="bg-slate-50 flex text-xs font-bold text-slate-500 border-b px-4 py-1.5 print:bg-transparent">
+                                    <div className="w-1/2">Spieler</div>
+                                    <div className="flex w-1/2 justify-end gap-3 text-center">
+                                        <div className="w-6" title="Siege">S</div>
+                                        <div className="w-10" title="Spiele">G</div>
+                                        <div className="w-8" title="Differenz">+/-</div>
+                                    </div>
+                                    </div>
+
+                                    <ul className="divide-y divide-slate-100 bg-white border-b border-slate-200">
+                                    {standings.map((p, pIdx) => (
+                                        <li key={pIdx} className="px-4 py-2.5 text-sm text-slate-800 flex justify-between items-center hover:bg-slate-50 transition-colors">
+                                        <span className="font-medium break-words w-1/2 pr-2">{pIdx + 1}. {p.name}</span>
+                                        <div className="flex w-1/2 justify-end gap-3 text-center font-mono">
+                                            <span className="w-6 font-bold text-teal-600 bg-teal-50 rounded print:bg-transparent print:text-black">{p.wins}</span>
+                                            <span className="w-10 text-slate-500 text-xs flex items-center justify-center">{p.gamesWon}:{p.gamesLost}</span>
+                                            <span className={`w-8 font-medium text-xs flex items-center justify-center ${p.diff > 0 ? 'text-green-600' : p.diff < 0 ? 'text-red-500' : 'text-slate-400'}`}>
+                                            {p.diff > 0 ? '+' : ''}{p.diff}
+                                            </span>
+                                        </div>
+                                        </li>
+                                    ))}
+                                    </ul>
+
+                                    <div className="bg-slate-50 px-4 py-3 h-full print:bg-transparent">
+                                        <h5 className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider">Gruppenspiele</h5>
+                                        <div className="space-y-1.5">
+                                            {groupMatchesForTable.map(m => (
+                                                <div key={m.id} className="text-xs flex justify-between items-center bg-white p-1.5 rounded border border-slate-200 shadow-sm print:shadow-none print:border-b-0">
+                                                    <span className={`break-words w-[42%] ${m.winner === m.player1 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'}`}>{m.player1}</span>
+                                                    <span className="text-[10px] text-slate-400 font-mono text-center w-1/6 bg-slate-50 rounded px-1 print:bg-transparent print:text-black">{m.score || '-:-'}</span>
+                                                    <span className={`break-words w-[42%] text-right ${m.winner === m.player2 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'}`}>{m.player2}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                )
+                            })}
+                            </div>
+                        </div>
+                        )}
+                        
+                        {hasKo && (
+                        <div className="flex-1 border-l border-slate-100 pl-0 lg:pl-8 mt-8 lg:mt-0 print:border-none print:pl-0 w-full overflow-hidden">
+                            <h4 className="font-semibold text-slate-600 mb-4 print:hidden">K.O.-Runde</h4>
+                            <div className="flex gap-4 items-center h-full min-h-[200px] bg-slate-50/50 rounded-xl border border-slate-100 p-6 overflow-x-auto relative shadow-inner print:bg-transparent print:border-none print:shadow-none print:p-0">
+                            
+                            {[...new Set(koMatches.map(m => m.koRound))].sort((a,b)=>b-a).map(r => {
+                                const mInRound = koMatches.filter(m => m.koRound === r).sort((a,b)=>a.matchIndex - b.matchIndex);
+                                return (
+                                    <div key={r} className="flex flex-col gap-6 justify-around min-w-[200px] h-full text-left">
+                                        {mInRound.map(m => (
+                                            <div key={m.id} className={`bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10 ${m.score === 'Freilos' ? 'opacity-50 print:opacity-100 print:border-dashed' : ''} print:shadow-none`}>
+                                                <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">{m.name}</div>
+                                                <div className={`break-words p-1 rounded ${m.winner === m.player1 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player1}</div>
+                                                <div className="border-t border-slate-100 my-1"></div>
+                                                <div className={`break-words p-1 rounded ${m.winner === m.player2 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player2}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )
+                            })}
+
+                            {koMatches.length > 0 && final && (
+                                <div className="flex-1 flex justify-center text-slate-300 print:hidden"><ChevronRight size={32} /></div>
+                            )}
+
+                            {final && (
+                                <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl print:bg-transparent print:border-2 text-left">
+                                <div className="text-center text-xs text-amber-600 font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
+                                <div className="bg-white border-2 border-amber-300 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800 print:shadow-none">
+                                    <div className={`break-words p-1 rounded ${final.winner === final.player1 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player1}</div>
+                                    <div className="border-t border-slate-100 my-1"></div>
+                                    <div className={`break-words p-1 rounded ${final.winner === final.player2 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player2}</div>
+                                </div>
+                                {final.winner && (
+                                    <div className="mt-3 text-center">
+                                        <span className="bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full font-bold shadow-sm print:border print:border-amber-400 print:bg-transparent">Sieger: {final.winner}</span>
+                                    </div>
+                                )}
+                                </div>
+                            )}
+                            </div>
+                        </div>
+                        )}
+                    </div>
+                )}
+                </div>
+            );
+            })}
+        </div>
+    );
+}
+
+function MonitorView({ timeSlots, matchData, tournamentStructures, categories, onExit, currentUrl }) {
+  const [activeIndices, setActiveIndices] = useState([0, 1]);
+  const [monitorTab, setMonitorTab] = useState('live');
 
   useEffect(() => {
     if (!timeSlots || timeSlots.length === 0) return;
     
-    const updateCurrentSlot = () => {
-        const now = new Date();
-        const currentMins = now.getHours() * 60 + now.getMinutes();
-        
-        let foundIndex = timeSlots.length - 1;
+    const findActiveSlots = () => {
+        let firstUnfinished = -1;
         for (let i = 0; i < timeSlots.length; i++) {
-            const endMins = parseTime(timeSlots[i].endTime);
-            if (currentMins < endMins) {
-                foundIndex = i;
+            const slot = timeSlots[i];
+            let isCompleted = true;
+            for (const id of slot.matchIds) {
+                const match = matchData[id];
+                if (match && match.score !== 'Freilos' && !match.winner) {
+                    isCompleted = false;
+                    break;
+                }
+            }
+            if (!isCompleted) {
+                firstUnfinished = i;
                 break;
             }
         }
-        setCurrentSlotIndex(Math.max(0, foundIndex));
+        
+        if (firstUnfinished !== -1) {
+            let secondUnfinished = firstUnfinished + 1;
+            while (secondUnfinished < timeSlots.length) {
+                const slot = timeSlots[secondUnfinished];
+                let isCompleted = true;
+                for (const id of slot.matchIds) {
+                    const match = matchData[id];
+                    if (match && match.score !== 'Freilos' && !match.winner) {
+                        isCompleted = false;
+                        break;
+                    }
+                }
+                if (!isCompleted) break;
+                secondUnfinished++;
+            }
+            if (secondUnfinished >= timeSlots.length) secondUnfinished = firstUnfinished;
+            setActiveIndices([firstUnfinished, Math.min(secondUnfinished, timeSlots.length - 1)]);
+        } else {
+            const last = Math.max(0, timeSlots.length - 1);
+            setActiveIndices([Math.max(0, last - 1), last]);
+        }
     };
     
-    updateCurrentSlot();
-    const interval = setInterval(updateCurrentSlot, 30000); 
-    return () => clearInterval(interval);
-  }, [timeSlots]);
+    findActiveSlots();
+  }, [timeSlots, matchData]);
 
   if (!timeSlots || timeSlots.length === 0) {
       return (
-          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-slate-100 relative">
+          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-slate-100 w-full relative">
              <button onClick={onExit} className="absolute top-6 right-6 p-3 rounded-full hover:bg-slate-700 text-slate-400 transition-colors">
                 <X size={24} />
              </button>
              <Trophy className="w-24 h-24 text-teal-500 mb-6" />
-             <h1 className="text-4xl font-bold mb-4">TC Wannweil Vereinsmeisterschaft</h1>
-             <p className="text-xl text-slate-400">Es wurde noch kein Spielplan generiert.</p>
+             <h1 className="text-4xl font-bold mb-4 text-center">TC Wannweil Vereinsmeisterschaft</h1>
+             <p className="text-xl text-slate-400 text-center">Es wurde noch kein Spielplan generiert.</p>
           </div>
       );
   }
 
-  const currentSlot = timeSlots[currentSlotIndex];
-  const nextSlot = timeSlots[currentSlotIndex + 1];
+  const slot1 = timeSlots[activeIndices[0]];
+  const slot2 = timeSlots[activeIndices[1]];
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans relative overflow-hidden">
-        <header className="bg-slate-800 p-6 flex justify-between items-center shadow-lg border-b border-slate-700">
-            <div className="flex items-center gap-4">
-                <Trophy className="w-10 h-10 text-teal-400" />
+    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans relative overflow-hidden w-full">
+        <header className="bg-slate-800 p-4 md:p-6 flex justify-between items-center shadow-lg border-b border-slate-700 w-full">
+            <div className="flex items-center gap-3 md:gap-4">
+                <Trophy className="w-8 h-8 md:w-10 md:h-10 text-teal-400" />
                 <div>
-                    <h1 className="text-3xl font-black tracking-tight text-white">TC Wannweil</h1>
-                    <p className="text-teal-400 text-lg font-medium">Live Spielplan</p>
+                    <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">TC Wannweil</h1>
+                    <p className="text-teal-400 text-sm md:text-lg font-medium">Turnier Monitor</p>
                 </div>
             </div>
-            <div className="flex items-center gap-6">
-                <div className="text-right">
-                    <div className="text-3xl font-bold font-mono">{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                    <div className="text-sm text-slate-400 font-medium">Aktuelle Uhrzeit</div>
-                </div>
-                <button onClick={onExit} className="p-3 rounded-full hover:bg-slate-700 text-slate-400 transition-colors" title="Monitoransicht beenden & Ausloggen">
+            <div className="flex items-center gap-4 md:gap-6">
+                <button onClick={onExit} className="p-2 md:p-3 rounded-full hover:bg-slate-700 text-slate-400 transition-colors" title="Monitoransicht beenden & Ausloggen">
                     <X size={24} />
                 </button>
             </div>
         </header>
 
-        <div className="flex-1 p-8 flex flex-col gap-8 overflow-y-auto pb-32">
-            {currentSlot && (
-                <section className="bg-slate-800 rounded-2xl p-6 shadow-2xl border border-teal-900/50">
-                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-white">
-                        <span className="bg-teal-500 text-white px-3 py-1 rounded-lg uppercase tracking-wider text-sm">Aktuell</span>
-                        <Clock className="text-teal-400" /> {currentSlot.time} - {currentSlot.endTime} Uhr
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {currentSlot.matchIds.map(id => {
-                            const match = matchData[id];
-                            if (!match) return null;
-                            return <MonitorMatchCard key={id} match={match} />
-                        })}
-                    </div>
-                </section>
-            )}
+        <div className="flex bg-slate-800 p-2 md:p-4 gap-2 justify-center border-b border-slate-700">
+            <button onClick={() => setMonitorTab('live')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'live' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700'}`}>Live Spiele</button>
+            <button onClick={() => setMonitorTab('brackets')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'brackets' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700'}`}>Tabellen & Turnierbaum</button>
+        </div>
 
-            {nextSlot && (
-                <section className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700">
-                    <h2 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-300">
-                        <span className="bg-slate-700 text-slate-300 px-3 py-1 rounded-lg uppercase tracking-wider text-sm">Als nächstes</span>
-                        <Clock className="text-slate-400" /> {nextSlot.time} - {nextSlot.endTime} Uhr
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 opacity-70">
-                        {nextSlot.matchIds.map(id => {
-                            const match = matchData[id];
-                            if (!match) return null;
-                            return <MonitorMatchCard key={id} match={match} />
-                        })}
-                    </div>
+        <div className="flex-1 p-4 md:p-8 flex flex-col gap-8 overflow-y-auto pb-32 w-full text-center">
+            {monitorTab === 'live' ? (
+                <>
+                    {slot1 && (
+                        <section className="bg-slate-800 rounded-2xl p-4 md:p-6 shadow-2xl border border-teal-900/50 w-full text-left">
+                            <h2 className="text-xl md:text-2xl font-bold mb-6 flex items-center gap-3 text-white">
+                                <span className="bg-teal-500 text-white px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm">Aktuell</span>
+                                <Clock className="text-teal-400" /> {slot1.time} - {slot1.endTime} Uhr
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                                {slot1.matchIds.map(id => {
+                                    const match = matchData[id];
+                                    if (!match) return null;
+                                    return <MonitorMatchCard key={id} match={match} />
+                                })}
+                            </div>
+                        </section>
+                    )}
+
+                    {slot2 && (
+                        <section className="bg-slate-800/50 rounded-2xl p-4 md:p-6 border border-slate-700 w-full text-left">
+                            <h2 className="text-lg md:text-xl font-bold mb-6 flex items-center gap-3 text-slate-300">
+                                <span className="bg-slate-700 text-slate-300 px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm">Als nächstes</span>
+                                <Clock className="text-slate-400" /> {slot2.time} - {slot2.endTime} Uhr
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 opacity-80">
+                                {slot2.matchIds.map(id => {
+                                    const match = matchData[id];
+                                    if (!match) return null;
+                                    return <MonitorMatchCard key={id} match={match} />
+                                })}
+                            </div>
+                        </section>
+                    )}
+                </>
+            ) : (
+                <section className="bg-slate-50 text-slate-900 rounded-2xl p-4 md:p-8 border border-slate-200 w-full shadow-2xl">
+                    <BracketsView categories={categories} tournamentStructures={tournamentStructures} matchData={matchData} />
                 </section>
             )}
         </div>
 
-        <div className="absolute bottom-6 right-6 bg-white p-4 rounded-xl shadow-2xl flex flex-col items-center gap-2 border-4 border-slate-800">
+        <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 bg-white p-3 md:p-4 rounded-xl shadow-2xl flex flex-col items-center gap-2 border-4 border-slate-800">
             <SimpleQRCode value={currentUrl} size={100} />
-            <span className="text-[10px] font-bold text-slate-800 uppercase tracking-wider">Plan auf dem Handy</span>
+            <span className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-wider">Plan auf dem Handy</span>
         </div>
     </div>
   );
@@ -669,23 +859,23 @@ function MonitorMatchCard({ match }) {
     const isPlaceholder = match.player1.includes('Gruppe') || match.player1.includes('Sieger') || match.player1.includes('Platz');
     
     return (
-        <div className={`rounded-xl p-5 flex flex-col gap-3 h-full border-2 ${match.isFinal ? 'bg-amber-900/20 border-amber-500/50' : 'bg-slate-700/50 border-slate-600'}`}>
+        <div className={`rounded-xl p-4 md:p-5 flex flex-col gap-3 h-full border-2 ${match.isFinal ? 'bg-amber-900/20 border-amber-500/50' : 'bg-slate-700/50 border-slate-600'}`}>
             <div className="flex justify-between items-start">
                 <div className="flex flex-col gap-1">
-                    <span className="text-xs font-bold text-teal-400 uppercase tracking-wider">{match.category}</span>
-                    <span className="text-sm font-medium text-slate-300">{match.type} {match.name && `- ${match.name}`}</span>
+                    <span className="text-[10px] md:text-xs font-bold text-teal-400 uppercase tracking-wider">{match.category}</span>
+                    <span className="text-xs md:text-sm font-medium text-slate-300">{match.type} {match.name && `- ${match.name}`}</span>
                 </div>
-                <div className="bg-slate-900 text-white font-black text-xl w-10 h-10 rounded-lg flex items-center justify-center shadow-inner">
+                <div className="bg-slate-900 text-white font-black text-lg md:text-xl w-8 h-8 md:w-10 md:h-10 rounded-lg flex items-center justify-center shadow-inner shrink-0 ml-2">
                     {match.court}
                 </div>
             </div>
             
             <div className="flex flex-col gap-3 mt-2 flex-grow justify-center">
-                <div className={`font-medium text-lg leading-tight break-words ${match.winner === match.player1 ? 'text-teal-300 font-bold' : 'text-white'}`}>
+                <div className={`font-medium text-base md:text-lg leading-tight break-words ${match.winner === match.player1 ? 'text-teal-300 font-bold' : 'text-white'}`}>
                     {match.player1}
                 </div>
-                <div className="text-sm text-slate-500 font-serif italic text-center w-full my-[-8px]">vs</div>
-                <div className={`font-medium text-lg leading-tight break-words ${match.winner === match.player2 ? 'text-teal-300 font-bold' : 'text-white'}`}>
+                <div className="text-xs md:text-sm text-slate-500 font-serif italic text-center w-full my-[-8px]">vs</div>
+                <div className={`font-medium text-base md:text-lg leading-tight break-words ${match.winner === match.player2 ? 'text-teal-300 font-bold' : 'text-white'}`}>
                     {match.player2}
                 </div>
             </div>
@@ -697,7 +887,7 @@ function MonitorMatchCard({ match }) {
             )}
             
             {isPlaceholder && !match.score && (
-                 <div className="mt-3 py-2 rounded-lg text-center text-sm font-medium text-slate-500">
+                 <div className="mt-3 py-2 rounded-lg text-center text-xs md:text-sm font-medium text-slate-500">
                     {match.isFinal ? 'Finalisten noch offen' : 'Wartet auf Vorrunde'}
                  </div>
             )}
@@ -720,7 +910,7 @@ function LoginScreen({ onLogin, onMonitor }) {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 w-full">
             <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-100">
                 <div className="flex flex-col items-center mb-8">
                     <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mb-4">
@@ -755,10 +945,6 @@ function LoginScreen({ onLogin, onMonitor }) {
                     <p className="text-center text-xs text-slate-400 mt-3">Ideal für Smartphones oder den TV im Vereinsheim.</p>
                 </div>
             </div>
-            
-            <div className="mt-8 text-center text-xs text-slate-400">
-                Standardpasswort: tcw2026
-            </div>
         </div>
     );
 }
@@ -768,11 +954,27 @@ export default function App() {
   const [isFirebaseInitialized, setIsFirebaseInitialized] = useState(false);
   const [isSavingToCloud, setIsSavingToCloud] = useState(false);
 
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [viewMode, setViewMode] = useState('manage'); 
+  const [viewMode, setViewMode] = useState(() => {
+      if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          return params.get('mode') === 'monitor' ? 'monitor' : 'manage';
+      }
+      return 'manage';
+  });
   
-  const [activeTab, setActiveTab] = useState('participants');
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+      if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          return params.get('mode') === 'monitor';
+      }
+      return false;
+  });
   
+  const [activeTab, setActiveTab] = useState('applications');
+  
+  const [applications, setApplications] = useState({});
+  const [rawAppInput, setRawAppInput] = useState('');
+
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategory, setEditingCategory] = useState(null);
@@ -806,17 +1008,13 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   
   const fileInputRef = useRef(null);
-  const currentUrl = window.location.href;
+  const appFileInputRef = useRef(null);
+  const currentUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?mode=monitor` : '';
 
-  // 1. Setup Firebase Auth
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        await signInAnonymously(auth);
       } catch (error) {
         console.error("Firebase Auth Error:", error);
       }
@@ -829,7 +1027,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Load from Firebase Function
   const loadFromCloud = async () => {
       if (!firebaseUser) return;
       try {
@@ -848,6 +1045,7 @@ export default function App() {
                   setScheduleAllFinalsAtEnd(data.__settings.scheduleAllFinalsAtEnd !== undefined ? data.__settings.scheduleAllFinalsAtEnd : true);
                   setNumCourts(data.__settings.numCourts !== undefined ? data.__settings.numCourts : 6);
               }
+              if (data.__applications) setApplications(data.__applications);
               if (data.__matchData) setMatchData(data.__matchData);
               if (data.__tournamentStructures) setTournamentStructures(data.__tournamentStructures);
               if (data.__timeSlots) setTimeSlots(data.__timeSlots);
@@ -867,22 +1065,21 @@ export default function App() {
       }
   };
 
-  // 3. Auto-load on initialization
   useEffect(() => {
       if (firebaseUser && !isFirebaseInitialized) {
           loadFromCloud().then(() => setIsFirebaseInitialized(true));
       }
   }, [firebaseUser, isFirebaseInitialized]);
 
-  // 4. Setup Real-time Listener (Crucial for Monitor View)
+  // Real-time synchronization for the Monitor View
   useEffect(() => {
-      if (!firebaseUser) return;
+      if (!firebaseUser || !isFirebaseInitialized) return;
       const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentData', 'main');
       const unsub = onSnapshot(docRef, (snap) => {
           if (snap.exists()) {
               const data = snap.data();
-              // Auto-sync everything for Monitor, or just matches/slots for Manage
               if (viewMode === 'monitor') {
+                  if (data.__categories) setCategories(data.__categories);
                   if (data.__timeSlots) setTimeSlots(data.__timeSlots);
                   if (data.__matchData) setMatchData(data.__matchData);
                   if (data.__tournamentStructures) setTournamentStructures(data.__tournamentStructures);
@@ -891,15 +1088,15 @@ export default function App() {
       }, (error) => console.error("Snapshot error:", error));
       
       return () => unsub();
-  }, [firebaseUser, viewMode]);
+  }, [firebaseUser, viewMode, isFirebaseInitialized]);
 
-  // 5. Save to Firebase Function
-  const saveToCloud = async (overrideState = null) => {
+  // Master Save Function
+  const saveToCloud = async () => {
       if (!firebaseUser) return;
       setIsSavingToCloud(true);
       try {
           const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentData', 'main');
-          const dataToSave = overrideState || {
+          const dataToSave = {
               ...participants,
               __categories: categories,
               __grandFinals: grandFinals,
@@ -909,6 +1106,7 @@ export default function App() {
               __categoryModes: categoryModes,
               __groupCounts: groupCounts,
               __settings: { scheduleAllFinalsAtEnd, numCourts },
+              __applications: applications,
               __matchData: matchData,
               __tournamentStructures: tournamentStructures,
               __timeSlots: timeSlots,
@@ -924,6 +1122,153 @@ export default function App() {
       setIsSavingToCloud(false);
   };
 
+  // Continuous Auto-Save Trigger for all state changes in management view
+  useEffect(() => {
+      if (!isFirebaseInitialized || !firebaseUser || viewMode === 'monitor') return;
+      const timeout = setTimeout(() => {
+          saveToCloud();
+      }, 1500);
+
+      return () => clearTimeout(timeout);
+  }, [
+      participants, categories, grandFinals, kinderCategories, kinderCourts, kinderShortFinals, 
+      categoryModes, groupCounts, scheduleAllFinalsAtEnd, numCourts, startTime, matchDuration, 
+      breakDuration, finalDuration, matchData, tournamentStructures, timeSlots, applications,
+      isFirebaseInitialized, firebaseUser, viewMode
+  ]);
+
+  const handleParseRawInput = () => {
+      if (!rawAppInput.trim()) return;
+      const lines = rawAppInput.split('\n').map(l => l.trim()).filter(l => l);
+      let data = { entries: {} };
+      let currentCategory = null;
+
+      for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          
+          if (line === 'SpielerIn' || line === 'Name') {
+              if (lines[i+1] && !lines[i+1].includes(':')) data.name = lines[i+1];
+          } 
+          else if (line.startsWith('Mail:')) {
+              data.mail = line.replace('Mail:', '').trim();
+          } 
+          else if (line.startsWith('Tel.:') || line.startsWith('Tel:')) {
+              data.tel = line.replace(/Tel\.?:/, '').trim();
+          } 
+          else if (line === 'Teilnahme an:') {
+              let cat = lines[i+1];
+              if (cat) {
+                  if (cat.toLowerCase() === 'mixed') cat = 'Doppel-Mix';
+                  currentCategory = cat;
+                  if (!data.entries[cat]) data.entries[cat] = {};
+              }
+          } 
+          else if (line === 'Doppel-PartnerIn:' || line === 'Doppel-Partner:') {
+              let partner = lines[i+1];
+              if (partner && partner !== 'N/A' && currentCategory) {
+                  data.entries[currentCategory].partner = partner;
+              }
+          } 
+          else if (line === 'Mixed-PartnerIn:' || line === 'Mixed-Partner:') {
+              let partner = lines[i+1];
+              if (partner && partner !== 'N/A') {
+                  if (!data.entries['Doppel-Mix']) data.entries['Doppel-Mix'] = {};
+                  data.entries['Doppel-Mix'].partner = partner;
+              }
+          }
+      }
+
+      if (data.name) {
+          setApplications(prev => {
+              const updated = { ...prev };
+              if (updated[data.name]) {
+                  updated[data.name].mail = data.mail || updated[data.name].mail;
+                  updated[data.name].tel = data.tel || updated[data.name].tel;
+                  updated[data.name].entries = { ...updated[data.name].entries, ...data.entries };
+              } else {
+                  updated[data.name] = data;
+              }
+              return updated;
+          });
+          setRawAppInput('');
+      }
+  };
+
+  const handleExportApplications = () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(applications, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", "anmeldungen_tc_wannweil.json");
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+  };
+
+  const handleImportApplications = (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          try {
+              const loaded = JSON.parse(e.target.result);
+              if (loaded && typeof loaded === 'object') {
+                  setApplications(prev => ({ ...prev, ...loaded }));
+              }
+          } catch (err) {
+              console.error("Fehler beim Importieren der Anmeldungen:", err);
+          }
+          event.target.value = '';
+      };
+      reader.readAsText(file);
+  };
+
+  const transferToParticipants = () => {
+      let newParticipants = { ...participants };
+      
+      categories.forEach(cat => {
+          let pairs = new Set();
+          let generatedNames = [];
+          
+          Object.values(applications).forEach(app => {
+              if (app.entries && app.entries[cat]) {
+                  const isDouble = cat.toLowerCase().includes('doppel') || cat.toLowerCase().includes('mix');
+                  let partner = app.entries[cat].partner;
+                  
+                  if (isDouble && partner && partner !== 'N/A' && partner.trim() !== '') {
+                      let pairKey = [app.name.trim(), partner.trim()].sort().join(' / ');
+                      if (!pairs.has(pairKey)) {
+                          pairs.add(pairKey);
+                          generatedNames.push(pairKey);
+                      }
+                  } else {
+                      generatedNames.push(app.name.trim());
+                  }
+              }
+          });
+          
+          if (generatedNames.length > 0) {
+               const existingLines = (newParticipants[cat] || '').split('\n').map(l => l.trim()).filter(l=>l);
+               const lkMap = {};
+               existingLines.forEach(l => {
+                   const parts = l.split(',');
+                   if(parts.length > 1) {
+                       lkMap[parts[0].trim()] = parts[1].trim();
+                   }
+               });
+
+               const mergedLines = generatedNames.map(name => {
+                   if (lkMap[name]) return `${name}, ${lkMap[name]}`;
+                   return name;
+               });
+               
+               newParticipants[cat] = mergedLines.join('\n');
+          }
+      });
+      
+      setParticipants(newParticipants);
+      setActiveTab('participants'); 
+  };
+
   const getMode = (cat) => categoryModes[cat] || 'standard';
   const getGroupCount = (cat) => groupCounts[cat] || 'auto';
 
@@ -937,11 +1282,27 @@ export default function App() {
       setTimeSlots(null); setTournamentStructures(null); setMatchData({});
   };
 
+  if (!isFirebaseInitialized) {
+      return (
+          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-slate-100 w-full relative">
+             <Trophy className="w-16 h-16 text-teal-500 mb-6 animate-pulse" />
+             <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+             <p className="text-lg text-slate-400 font-medium">Lade Turnierdaten aus der Cloud...</p>
+          </div>
+      );
+  }
+
   if (!isAuthenticated && viewMode !== 'monitor') {
       return (
           <LoginScreen 
               onLogin={() => setIsAuthenticated(true)} 
-              onMonitor={() => { setIsAuthenticated(true); setViewMode('monitor'); }} 
+              onMonitor={() => { 
+                  setIsAuthenticated(true); 
+                  setViewMode('monitor'); 
+                  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+                      window.history.pushState({}, document.title, window.location.origin + window.location.pathname + '?mode=monitor');
+                  }
+              }} 
           />
       );
   }
@@ -950,80 +1311,18 @@ export default function App() {
       return <MonitorView 
           timeSlots={timeSlots} 
           matchData={matchData} 
+          tournamentStructures={tournamentStructures}
+          categories={categories}
           onExit={() => { 
               setIsAuthenticated(false); 
               setViewMode('manage'); 
+              if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+                  window.history.pushState({}, document.title, window.location.origin + window.location.pathname);
+              }
           }} 
           currentUrl={currentUrl} 
       />;
   }
-
-  // Backup Manual JSON Handlers
-  const handleSaveParticipants = () => {
-    const dataToSave = { 
-        ...participants, 
-        __grandFinals: grandFinals, 
-        __kinderCategories: kinderCategories,
-        __kinderCourts: kinderCourts,
-        __kinderShortFinals: kinderShortFinals,
-        __categoryModes: categoryModes, 
-        __groupCounts: groupCounts,
-        __settings: { scheduleAllFinalsAtEnd, numCourts },
-        __matchData: matchData,
-        __tournamentStructures: tournamentStructures,
-        __timeSlots: timeSlots
-    };
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToSave, null, 2));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", "turnier_tc_wannweil.json");
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-  };
-
-  const handleLoadParticipants = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const loadedData = JSON.parse(e.target.result);
-        
-        if (loadedData.__grandFinals) { setGrandFinals(loadedData.__grandFinals); delete loadedData.__grandFinals; }
-        if (loadedData.__kinderCategories) { setKinderCategories(loadedData.__kinderCategories); delete loadedData.__kinderCategories; }
-        if (loadedData.__kinderCourts) { setKinderCourts(loadedData.__kinderCourts); delete loadedData.__kinderCourts; }
-        if (loadedData.__kinderShortFinals) { setKinderShortFinals(loadedData.__kinderShortFinals); delete loadedData.__kinderShortFinals; }
-        
-        if (loadedData.__categoryModes) { setCategoryModes(loadedData.__categoryModes); delete loadedData.__categoryModes; } 
-        else if (loadedData.__koOnly) {
-            const migrated = {};
-            loadedData.__koOnly.forEach(c => migrated[c] = 'ko_only');
-            setCategoryModes(prev => ({...prev, ...migrated}));
-            delete loadedData.__koOnly;
-        }
-        if (loadedData.__groupCounts) { setGroupCounts(loadedData.__groupCounts); delete loadedData.__groupCounts; }
-        
-        if (loadedData.__settings) {
-            if (loadedData.__settings.scheduleAllFinalsAtEnd !== undefined) setScheduleAllFinalsAtEnd(loadedData.__settings.scheduleAllFinalsAtEnd);
-            if (loadedData.__settings.numCourts !== undefined) setNumCourts(loadedData.__settings.numCourts);
-            delete loadedData.__settings;
-        }
-
-        if (loadedData.__matchData) { setMatchData(loadedData.__matchData); delete loadedData.__matchData; } else { setMatchData({}); }
-        if (loadedData.__tournamentStructures) { setTournamentStructures(loadedData.__tournamentStructures); delete loadedData.__tournamentStructures; } else { setTournamentStructures(null); }
-        if (loadedData.__timeSlots) { setTimeSlots(loadedData.__timeSlots); delete loadedData.__timeSlots; } else { setTimeSlots(null); }
-
-        const loadedCategories = Object.keys(loadedData);
-        setCategories(prev => Array.from(new Set([...prev, ...loadedCategories])));
-        setParticipants(prev => ({ ...prev, ...loadedData }));
-      } catch (err) {
-        console.error("Fehler beim Laden der Datei:", err);
-      }
-      event.target.value = '';
-    };
-    reader.readAsText(file);
-  };
 
   const handleAddCategory = () => {
       const name = newCategoryName.trim();
@@ -1164,33 +1463,7 @@ export default function App() {
       nextMatches[matchId].winner = winner;
       
       nextMatches = processTournamentProgressPure(nextMatches, tournamentStructures, categories);
-      
-      setTimeSlots(prevSlots => {
-          const newSlots = buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals);
-          
-          // Auto-save to cloud on match update
-          if (firebaseUser) {
-              saveToCloud({
-                  ...participants,
-                  __categories: categories,
-                  __grandFinals: grandFinals,
-                  __kinderCategories: kinderCategories,
-                  __kinderCourts: kinderCourts,
-                  __kinderShortFinals: kinderShortFinals,
-                  __categoryModes: categoryModes,
-                  __groupCounts: groupCounts,
-                  __settings: { scheduleAllFinalsAtEnd, numCourts },
-                  __matchData: nextMatches,
-                  __tournamentStructures: tournamentStructures,
-                  __timeSlots: newSlots,
-                  __startTime: startTime,
-                  __matchDuration: matchDuration,
-                  __breakDuration: breakDuration,
-                  __finalDuration: finalDuration,
-              });
-          }
-          return newSlots;
-      });
+      setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals));
       
       return nextMatches;
     });
@@ -1201,31 +1474,7 @@ export default function App() {
         let nextMatches = JSON.parse(JSON.stringify(prevMatches));
         nextMatches[matchId].manualTime = newTime;
         
-        setTimeSlots(prevSlots => {
-            const newSlots = buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals);
-            if (firebaseUser) {
-                saveToCloud({
-                    ...participants,
-                    __categories: categories,
-                    __grandFinals: grandFinals,
-                    __kinderCategories: kinderCategories,
-                    __kinderCourts: kinderCourts,
-                    __kinderShortFinals: kinderShortFinals,
-                    __categoryModes: categoryModes,
-                    __groupCounts: groupCounts,
-                    __settings: { scheduleAllFinalsAtEnd, numCourts },
-                    __matchData: nextMatches,
-                    __tournamentStructures: tournamentStructures,
-                    __timeSlots: newSlots,
-                    __startTime: startTime,
-                    __matchDuration: matchDuration,
-                    __breakDuration: breakDuration,
-                    __finalDuration: finalDuration,
-                });
-            }
-            return newSlots;
-        });
-        
+        setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals));
         return nextMatches;
     });
   };
@@ -1298,7 +1547,6 @@ export default function App() {
           return { catStructure, initialMatches, nextId: matchIdCounter };
       }
 
-      // Dynamische Gruppenlogik
       let customGroupCount = getGroupCount(category);
       let numGroups = 1;
       
@@ -1451,37 +1699,14 @@ export default function App() {
       setTournamentStructures(finalStructures);
       setMatchData(finalMatches);
       setTimeSlots(finalSlots);
-      
-      // Auto-save generated schedule to cloud
-      if (firebaseUser) {
-          saveToCloud({
-              ...participants,
-              __categories: categories,
-              __grandFinals: grandFinals,
-              __kinderCategories: kinderCategories,
-              __kinderCourts: kinderCourts,
-              __kinderShortFinals: kinderShortFinals,
-              __categoryModes: categoryModes,
-              __groupCounts: groupCounts,
-              __settings: { scheduleAllFinalsAtEnd, numCourts },
-              __matchData: finalMatches,
-              __tournamentStructures: finalStructures,
-              __timeSlots: finalSlots,
-              __startTime: startTime,
-              __matchDuration: matchDuration,
-              __breakDuration: breakDuration,
-              __finalDuration: finalDuration,
-          });
-      }
-
       setIsGenerating(false);
       setActiveTab('schedule');
     }, 800);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-teal-200">
-      <header className="bg-teal-700 text-white shadow-md print:hidden">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-teal-200 w-full">
+      <header className="bg-teal-700 text-white shadow-md print:hidden w-full">
         <div className="w-full px-4 md:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <Trophy className="w-8 h-8 text-yellow-400" />
@@ -1490,7 +1715,11 @@ export default function App() {
               <p className="text-teal-100 text-sm font-medium">Vereinsmeisterschaft - Turnierplaner</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-4">
+             <div className="hidden md:flex items-center gap-2 text-xs font-medium text-teal-200 bg-teal-800/50 px-3 py-1.5 rounded-full border border-teal-600/50">
+               {isSavingToCloud ? <Cloud className="animate-pulse" size={14} /> : <Cloud size={14} />}
+               {isSavingToCloud ? 'Speichert...' : 'Auto-Save Aktiv'}
+             </div>
              <button onClick={() => setViewMode('monitor')} className="flex items-center gap-2 bg-teal-800 hover:bg-teal-900 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-teal-600">
                 <Monitor size={18} /> Monitor-Ansicht
              </button>
@@ -1502,16 +1731,119 @@ export default function App() {
       </header>
 
       <main className="w-full px-4 md:px-8 py-8">
-        <div className="flex flex-wrap gap-2 mb-8 border-b border-slate-200 pb-2 print:hidden">
-          <TabButton active={activeTab === 'participants'} onClick={() => setActiveTab('participants')} icon={<Users size={18} />} label="Teilnehmer" />
+        <div className="flex flex-wrap gap-2 mb-8 border-b border-slate-200 pb-2 print:hidden w-full">
+          <TabButton active={activeTab === 'applications'} onClick={() => setActiveTab('applications')} icon={<Inbox size={18} />} label="Anmeldungen" />
+          <TabButton active={activeTab === 'participants'} onClick={() => setActiveTab('participants')} icon={<Users size={18} />} label="Meldelisten" />
           <TabButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings size={18} />} label="Einstellungen" />
           <TabButton active={activeTab === 'schedule'} onClick={() => setActiveTab('schedule')} icon={<Calendar size={18} />} label="Spielplan" disabled={!timeSlots && !isGenerating} highlight={timeSlots !== null && activeTab === 'settings'} />
           <TabButton active={activeTab === 'brackets'} onClick={() => setActiveTab('brackets')} icon={<Grid size={18} />} label="Tabellen & Turnierbaum" disabled={!timeSlots && !isGenerating} />
         </div>
 
+        {activeTab === 'applications' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6 w-full">
+              <div className="flex flex-col md:flex-row justify-between md:items-start mb-6 gap-4">
+                <div>
+                  <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
+                    <Inbox className="text-teal-600" /> E-Mail / Formular Anmeldungen
+                  </h2>
+                  <div className="text-slate-600 text-sm bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500 w-full">
+                    <p className="mb-1">Kopieren Sie den Text aus den E-Mail-Anmeldungen in das Feld unten. Das System analysiert den Text und ordnet die Spieler automatisch zu.</p>
+                    <p>Wenn ein Spieler erneut eingefügt wird (gleicher Name), werden seine neuen Kategorien und Partner hinzugefügt.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <input type="file" accept=".json" ref={appFileInputRef} onChange={handleImportApplications} className="hidden" />
+                  <button onClick={() => appFileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-teal-200" title="Anmeldungen importieren (.json)">
+                    <Upload size={16} /> Importieren
+                  </button>
+                  <button onClick={handleExportApplications} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-teal-200" title="Anmeldungen exportieren (.json)">
+                    <Download size={16} /> Exportieren
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-8 w-full">
+                 <div className="w-full md:w-1/3 flex flex-col gap-3">
+                    <label className="text-sm font-bold text-slate-700">Neue Anmeldung einfügen:</label>
+                    <textarea 
+                        className="w-full h-72 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm font-mono resize-none bg-slate-50"
+                        placeholder="Es gibt eine neue Anmeldung:&#10;SpielerIn&#10;Sylvia Van Buijtenen&#10;..."
+                        value={rawAppInput}
+                        onChange={(e) => setRawAppInput(e.target.value)}
+                    />
+                    <button onClick={handleParseRawInput} disabled={!rawAppInput.trim()} className="bg-teal-600 hover:bg-teal-500 text-white py-3 rounded-lg font-bold transition-colors flex justify-center items-center gap-2 disabled:opacity-50">
+                        <Plus size={18} /> Anmeldung verarbeiten
+                    </button>
+                 </div>
+                 
+                 <div className="w-full md:w-2/3 flex flex-col gap-3">
+                    <div className="flex justify-between items-end mb-1">
+                        <label className="text-sm font-bold text-slate-700">Erfasste Spieler ({Object.keys(applications).length})</label>
+                        <button onClick={transferToParticipants} disabled={Object.keys(applications).length === 0} className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm">
+                            <ArrowRight size={16} /> Auf Meldelisten übertragen
+                        </button>
+                    </div>
+                    <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[350px] shadow-sm">
+                       <table className="w-full text-left text-sm">
+                          <thead className="bg-slate-100 border-b border-slate-200 sticky top-0 z-10">
+                             <tr>
+                                <th className="p-3 font-bold text-slate-700">Name</th>
+                                <th className="p-3 font-bold text-slate-700">Kontakt</th>
+                                <th className="p-3 font-bold text-slate-700">Kategorien & Partner</th>
+                                <th className="p-3 font-bold text-slate-700 text-right">Aktion</th>
+                             </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white">
+                             {Object.values(applications).map((app, idx) => (
+                                 <tr key={idx} className="hover:bg-slate-50 transition-colors group">
+                                     <td className="p-3 font-bold text-slate-800">{app.name}</td>
+                                     <td className="p-3 text-slate-500 text-xs flex flex-col gap-0.5">
+                                        {app.mail && <span>{app.mail}</span>}
+                                        {app.tel && <span>{app.tel}</span>}
+                                     </td>
+                                     <td className="p-3 text-slate-700">
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {Object.entries(app.entries || {}).map(([cat, data], i) => (
+                                                <span key={i} className="bg-teal-50 text-teal-800 text-xs px-2.5 py-1 rounded-md border border-teal-100 flex items-center gap-1 font-medium">
+                                                    {cat}
+                                                    {data.partner && <span className="text-teal-600 font-bold italic">(& {data.partner})</span>}
+                                                </span>
+                                            ))}
+                                        </div>
+                                     </td>
+                                     <td className="p-3 text-right">
+                                         <button onClick={() => {
+                                             setApplications(prev => {
+                                                 const updated = {...prev};
+                                                 delete updated[app.name];
+                                                 return updated;
+                                             })
+                                         }} className="text-slate-300 hover:text-red-500 p-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Eintrag löschen">
+                                            <Trash2 size={18}/>
+                                         </button>
+                                     </td>
+                                 </tr>
+                             ))}
+                             {Object.keys(applications).length === 0 && (
+                                 <tr><td colSpan="4" className="p-8 text-center text-slate-400 font-medium">Es wurden noch keine Anmeldungen erfasst. Fügen Sie links Text ein.</td></tr>
+                             )}
+                          </tbody>
+                       </table>
+                    </div>
+                    <div className="text-xs text-slate-500 text-right">
+                        <span className="font-bold text-teal-600">Hinweis:</span> Beim Übertragen auf die Meldelisten werden Doppel-Partner automatisch zusammengefügt (z.B. Spieler / Partner) und bestehende LKs (Spielstärken) beibehalten.
+                    </div>
+                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'participants' && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6 w-full">
               <div className="flex flex-col md:flex-row justify-between md:items-start mb-6 gap-4">
                 <div>
                   <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
@@ -1522,31 +1854,9 @@ export default function App() {
                     <p><b>Spielstärke (Seeding):</b> Um faire Gruppen zu bilden, können Sie hinter dem Namen ein Komma und einen Stärkewert angeben (z.B. <code>Max Mustermann, 3</code>).</p>
                   </div>
                 </div>
-                
-                <div className="flex flex-col gap-2 shrink-0">
-                  <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-lg border border-slate-200">
-                      <button onClick={() => saveToCloud()} disabled={isSavingToCloud} className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-md text-sm font-bold transition-colors shadow-sm disabled:opacity-50" title="Stand in der Cloud speichern (Für Monitor)">
-                          {isSavingToCloud ? <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div> : <CloudUpload size={16} className="text-teal-600" />} Cloud Save
-                      </button>
-                      <button onClick={loadFromCloud} className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-md text-sm font-bold transition-colors shadow-sm" title="Letzten Stand aus der Cloud laden">
-                          <CloudDownload size={16} className="text-slate-500" /> Laden
-                      </button>
-                  </div>
-                  
-                  <div className="flex items-center justify-end gap-2 text-xs">
-                      <input type="file" accept=".json" ref={fileInputRef} onChange={handleLoadParticipants} className="hidden" />
-                      <button onClick={() => fileInputRef.current?.click()} className="text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1" title="Lokales JSON laden">
-                          <Upload size={12} /> Backup öffnen
-                      </button>
-                      <span className="text-slate-300">|</span>
-                      <button onClick={handleSaveParticipants} className="text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1" title="Als lokales JSON speichern">
-                          <Download size={12} /> Backup speichern
-                      </button>
-                  </div>
-                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
                 {categories.map(cat => (
                   <div key={cat} className="flex flex-col">
                     <div className="flex justify-between items-start mb-2 min-h-[28px]">
@@ -1652,7 +1962,7 @@ export default function App() {
                 ))}
               </div>
 
-              <div className="mt-8 pt-6 border-t border-slate-100">
+              <div className="mt-8 pt-6 border-t border-slate-100 w-full">
                   <h3 className="text-sm font-bold text-slate-700 mb-3">Weitere Kategorie hinzufügen</h3>
                   <div className="flex items-center gap-2 max-w-sm">
                       <input type="text" className="flex-1 p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="Name (z.B. Junioren U18)" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()} />
@@ -1661,7 +1971,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end w-full">
               <button onClick={() => setActiveTab('settings')} className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2">
                 Weiter zu den Einstellungen <ChevronRight size={18} />
               </button>
@@ -1670,14 +1980,14 @@ export default function App() {
         )}
 
         {activeTab === 'settings' && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 w-full">
               <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
                 <Settings className="text-teal-600" /> Turniereinstellungen
               </h2>
               
-              <div className="space-y-6">
-                <div className="bg-slate-100 p-4 rounded-lg flex flex-col md:flex-row gap-4 items-start md:items-center">
+              <div className="space-y-6 w-full">
+                <div className="bg-slate-100 p-4 rounded-lg flex flex-col md:flex-row gap-4 items-start md:items-center w-full">
                     <label className="flex items-center gap-2 font-semibold text-slate-800 cursor-pointer shrink-0">
                         <input type="checkbox" checked={scheduleAllFinalsAtEnd} onChange={e => setScheduleAllFinalsAtEnd(e.target.checked)} className="w-5 h-5 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer" />
                         Alle Finals am Ende spielen
@@ -1685,7 +1995,7 @@ export default function App() {
                     <div className="text-sm text-slate-500 md:ml-4">Plant alle Endspiele gesammelt ganz am Ende des Turniers ein. (Ausnahme: Kinder-Finals mit aktiver "Vorrunden-Zeit" Einstellung).</div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Turnierbeginn</label>
                     <input type="time" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
@@ -1709,7 +2019,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="mt-8 border-t border-slate-100 pt-6 flex justify-between">
+              <div className="mt-8 border-t border-slate-100 pt-6 flex justify-between w-full">
                 <button onClick={() => setActiveTab('participants')} className="text-slate-600 hover:text-slate-900 px-4 py-2 font-medium transition-colors">Zurück</button>
                 <button onClick={generateSchedule} disabled={isGenerating} className="bg-teal-600 hover:bg-teal-500 text-white px-8 py-3 rounded-lg font-bold transition-all shadow-md hover:shadow-lg flex items-center gap-2 disabled:opacity-70">
                   {isGenerating ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Berechne...</> : <><Play size={18} fill="currentColor" /> Spielplan Generieren</>}
@@ -1720,8 +2030,8 @@ export default function App() {
         )}
 
         {activeTab === 'schedule' && timeSlots && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex justify-between items-center mb-6 print:hidden">
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
+            <div className="flex justify-between items-center mb-6 print:hidden w-full">
                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                  <Calendar className="text-teal-600" /> Offizieller Spielplan
                </h2>
@@ -1735,7 +2045,7 @@ export default function App() {
                </div>
             </div>
 
-            <div className="hidden print:block">
+            <div className="hidden print:block w-full">
                 <h2 className="text-2xl font-bold text-slate-800 mb-4 border-b border-slate-300 pb-2">Spielplan - Vereinsmeisterschaft</h2>
                 <table className="w-full text-left text-sm border-collapse border border-slate-300">
                     <thead>
@@ -1767,9 +2077,9 @@ export default function App() {
                 </table>
             </div>
 
-            <div className="space-y-6 pb-20 print:hidden">
+            <div className="space-y-6 pb-20 print:hidden w-full">
               {timeSlots.map((slot, index) => (
-                <div key={index} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div key={index} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden w-full">
                   <div className={`px-4 py-3 border-b flex items-center justify-between ${slot.slotType === 'final' ? 'bg-amber-100 border-amber-200' : 'bg-slate-100 border-slate-200'}`}>
                     <div className="flex items-center gap-2 font-bold text-lg text-slate-800">
                       <Clock size={20} className={slot.slotType === 'final' ? 'text-amber-600' : 'text-slate-500'} />
@@ -1780,7 +2090,7 @@ export default function App() {
                     )}
                   </div>
 
-                  <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
                     {slot.matchIds.map(id => {
                       const match = matchData[id];
                       if (!match) return null;
@@ -1791,7 +2101,7 @@ export default function App() {
               ))}
 
               {timeSlots.length === 0 && (
-                <div className="text-center py-12 text-slate-500">
+                <div className="text-center py-12 text-slate-500 w-full">
                   <Calendar size={48} className="mx-auto text-slate-300 mb-4" />
                   <p>Es konnten keine Spiele generiert werden.</p>
                 </div>
@@ -1801,171 +2111,13 @@ export default function App() {
         )}
 
         {activeTab === 'brackets' && tournamentStructures && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex justify-between items-center mb-6 print:hidden">
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
+            <div className="flex justify-between items-center mb-6 print:hidden w-full">
                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Grid className="text-teal-600" /> Tabellen & Turnierbaum</h2>
                <button onClick={() => window.print()} className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors hidden md:block print:hidden">Drucken</button>
             </div>
 
-            <div className="space-y-8 pb-20">
-              {categories.map((cat, index) => {
-                const data = tournamentStructures[cat];
-                if (!data) return null;
-                
-                const catMatches = Object.values(matchData).filter(m => m.category === cat);
-                const koMatches = catMatches.filter(m => m.stage === 'ko');
-                const final = catMatches.find(m => m.stage === 'final' && (!m.koRound || m.koRound === 1));
-                const hasKo = koMatches.length > 0 || final;
-
-                return (
-                  <div key={cat} className={`bg-white rounded-xl shadow-sm border border-slate-200 p-6 overflow-hidden print:break-after-page print:border-none print:shadow-none print:p-0 ${index > 0 ? 'print:pt-4' : ''}`}>
-                    <h3 className="text-xl font-bold text-teal-700 mb-6 border-b pb-2 flex justify-between items-center">
-                        {cat}
-                        {data.type === 'knockout' && <span className="text-xs bg-teal-100 text-teal-800 px-2 py-1 rounded uppercase tracking-widest font-bold">K.O.-System</span>}
-                    </h3>
-                    
-                    {data.type === 'knockout' ? (
-                        <div className="flex gap-4 items-center overflow-x-auto p-4 bg-slate-50/50 rounded-xl border border-slate-100 shadow-inner min-h-[300px] print:bg-transparent print:border-none print:shadow-none">
-                            {[...new Set(koMatches.map(m => m.koRound))].sort((a,b)=>b-a).map(r => {
-                                const mInRound = koMatches.filter(m => m.koRound === r).sort((a,b)=>a.matchIndex - b.matchIndex);
-                                return (
-                                    <div key={r} className="flex flex-col gap-6 justify-around min-w-[200px] h-full">
-                                        {mInRound.map(m => (
-                                            <div key={m.id} className={`bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10 ${m.score === 'Freilos' ? 'opacity-50 print:opacity-100 print:border-dashed' : ''}`}>
-                                                <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">{m.name}</div>
-                                                <div className={`break-words p-1 rounded ${m.winner === m.player1 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player1}</div>
-                                                <div className="border-t border-slate-100 my-1"></div>
-                                                <div className={`break-words p-1 rounded ${m.winner === m.player2 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player2}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )
-                            })}
-                            
-                            {final && (
-                                <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl ml-4 print:bg-transparent print:border-2">
-                                    <div className="text-center text-xs text-amber-600 font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
-                                    <div className="bg-white border-2 border-amber-300 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800">
-                                        <div className={`break-words p-1 rounded ${final.winner === final.player1 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player1}</div>
-                                        <div className="border-t border-slate-100 my-1"></div>
-                                        <div className={`break-words p-1 rounded ${final.winner === final.player2 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player2}</div>
-                                    </div>
-                                    {final.winner && (
-                                        <div className="mt-3 text-center">
-                                            <span className="bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full font-bold shadow-sm print:border print:border-amber-400 print:bg-transparent">Sieger: {final.winner}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="flex flex-col lg:flex-row gap-8">
-                          {Object.keys(data.groups || {}).length > 0 && (
-                            <div className="flex-1 space-y-4">
-                              <h4 className="font-semibold text-slate-600 flex items-center gap-2">Gruppenphase (Standings)</h4>
-                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                                {Object.keys(data.groups).map((gName, idx) => {
-                                  const standings = calculateStandings(gName, data, catMatches);
-                                  const groupMatchesForTable = catMatches.filter(m => m.stage === 'group' && m.groupName === gName);
-
-                                  return (
-                                    <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden shadow-sm flex flex-col print:break-inside-avoid">
-                                      <div className="bg-slate-50 px-4 py-2 font-bold text-sm text-slate-700 border-b flex justify-between print:bg-transparent">
-                                        <span>{gName}</span>
-                                      </div>
-                                      
-                                      <div className="bg-slate-50 flex text-xs font-bold text-slate-500 border-b px-4 py-1.5 print:bg-transparent">
-                                        <div className="w-1/2">Spieler</div>
-                                        <div className="flex w-1/2 justify-end gap-3 text-center">
-                                          <div className="w-6" title="Siege">S</div>
-                                          <div className="w-10" title="Spiele">G</div>
-                                          <div className="w-8" title="Differenz">+/-</div>
-                                        </div>
-                                      </div>
-    
-                                      <ul className="divide-y divide-slate-100 bg-white border-b border-slate-200">
-                                        {standings.map((p, pIdx) => (
-                                          <li key={pIdx} className="px-4 py-2.5 text-sm text-slate-800 flex justify-between items-center hover:bg-slate-50 transition-colors">
-                                            <span className="font-medium break-words w-1/2 pr-2">{pIdx + 1}. {p.name}</span>
-                                            <div className="flex w-1/2 justify-end gap-3 text-center font-mono">
-                                              <span className="w-6 font-bold text-teal-600 bg-teal-50 rounded print:bg-transparent print:text-black">{p.wins}</span>
-                                              <span className="w-10 text-slate-500 text-xs flex items-center justify-center">{p.gamesWon}:{p.gamesLost}</span>
-                                              <span className={`w-8 font-medium text-xs flex items-center justify-center ${p.diff > 0 ? 'text-green-600' : p.diff < 0 ? 'text-red-500' : 'text-slate-400'}`}>
-                                                {p.diff > 0 ? '+' : ''}{p.diff}
-                                              </span>
-                                            </div>
-                                          </li>
-                                        ))}
-                                      </ul>
-
-                                      <div className="bg-slate-50 px-4 py-3 h-full print:bg-transparent">
-                                          <h5 className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider">Gruppenspiele</h5>
-                                          <div className="space-y-1.5">
-                                              {groupMatchesForTable.map(m => (
-                                                  <div key={m.id} className="text-xs flex justify-between items-center bg-white p-1.5 rounded border border-slate-200 shadow-sm print:shadow-none print:border-b-0">
-                                                      <span className={`break-words w-[42%] ${m.winner === m.player1 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'}`}>{m.player1}</span>
-                                                      <span className="text-[10px] text-slate-400 font-mono text-center w-1/6 bg-slate-50 rounded px-1 print:bg-transparent print:text-black">{m.score || '-:-'}</span>
-                                                      <span className={`break-words w-[42%] text-right ${m.winner === m.player2 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'}`}>{m.player2}</span>
-                                                  </div>
-                                              ))}
-                                          </div>
-                                      </div>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
-                          
-                          {hasKo && (
-                            <div className="flex-1 border-l border-slate-100 pl-0 lg:pl-8 mt-8 lg:mt-0 print:border-none print:pl-0">
-                              <h4 className="font-semibold text-slate-600 mb-4 print:hidden">K.O.-Runde</h4>
-                              <div className="flex gap-4 items-center h-full min-h-[200px] bg-slate-50/50 rounded-xl border border-slate-100 p-6 overflow-x-auto relative shadow-inner print:bg-transparent print:border-none print:shadow-none print:p-0">
-                                
-                                {[...new Set(koMatches.map(m => m.koRound))].sort((a,b)=>b-a).map(r => {
-                                    const mInRound = koMatches.filter(m => m.koRound === r).sort((a,b)=>a.matchIndex - b.matchIndex);
-                                    return (
-                                        <div key={r} className="flex flex-col gap-6 justify-around min-w-[200px] h-full">
-                                            {mInRound.map(m => (
-                                                <div key={m.id} className={`bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10 ${m.score === 'Freilos' ? 'opacity-50 print:opacity-100 print:border-dashed' : ''} print:shadow-none`}>
-                                                    <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">{m.name}</div>
-                                                    <div className={`break-words p-1 rounded ${m.winner === m.player1 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player1}</div>
-                                                    <div className="border-t border-slate-100 my-1"></div>
-                                                    <div className={`break-words p-1 rounded ${m.winner === m.player2 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player2}</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )
-                                })}
-    
-                                {koMatches.length > 0 && final && (
-                                  <div className="flex-1 flex justify-center text-slate-300 print:hidden"><ChevronRight size={32} /></div>
-                                )}
-    
-                                {final && (
-                                  <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl print:bg-transparent print:border-2">
-                                    <div className="text-center text-xs text-amber-600 font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
-                                    <div className="bg-white border-2 border-amber-300 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800 print:shadow-none">
-                                        <div className={`break-words p-1 rounded ${final.winner === final.player1 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player1}</div>
-                                        <div className="border-t border-slate-100 my-1"></div>
-                                        <div className={`break-words p-1 rounded ${final.winner === final.player2 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player2}</div>
-                                    </div>
-                                    {final.winner && (
-                                       <div className="mt-3 text-center">
-                                         <span className="bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full font-bold shadow-sm print:border print:border-amber-400 print:bg-transparent">Sieger: {final.winner}</span>
-                                       </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <BracketsView categories={categories} tournamentStructures={tournamentStructures} matchData={matchData} />
           </div>
         )}
       </main>
@@ -2019,7 +2171,7 @@ function MatchCard({ match, onSaveResult, onManualTimeChange }) {
   if (match.score === 'Freilos') return null;
 
   return (
-    <div className={`border rounded-lg p-3 relative flex flex-col h-full ${match.isFinal ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-white shadow-sm'}`}>
+    <div className={`border rounded-lg p-3 relative flex flex-col h-full w-full ${match.isFinal ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-white shadow-sm'}`}>
       <div className="text-xs font-semibold text-teal-600 mb-1 flex justify-between items-center">
         <span className="break-words pr-2">{match.category}</span>
         <span className="text-slate-400 font-normal whitespace-nowrap">Platz {match.court}</span>
