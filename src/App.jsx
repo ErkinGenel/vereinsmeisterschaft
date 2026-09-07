@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, Settings, Trophy, Clock, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X, Monitor, LogIn, Lock, Cloud, CloudUpload, Info, Inbox, ArrowRight } from 'lucide-react';
+import { Calendar, Users, Settings, Trophy, Clock, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X, Monitor, LogIn, Lock, Cloud, Inbox, ArrowRight } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
@@ -493,8 +493,6 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
     combinedSlots.sort((a, b) => parseTime(a.time) - parseTime(b.time));
     combinedSlots.forEach((slot, idx) => {
         slot.slotIndex = idx;
-        // WICHTIG: Firebase kann keine JavaScript 'Set' Objekte speichern. 
-        // Wir löschen das Hilfsobjekt, bevor es in die Datenbank wandert.
         if (slot.activePlayers) {
             delete slot.activePlayers;
         }
@@ -667,21 +665,15 @@ function BracketsView({ categories, tournamentStructures, matchData }) {
     );
 }
 
-function MonitorView({ timeSlots, matchData, tournamentStructures, categories, onExit, currentUrl }) {
-  const [currentSlotIndex, setCurrentSlotIndex] = useState(0);
-  const [currentTime, setCurrentTime] = useState(new Date());
+function MonitorView({ timeSlots, matchData, tournamentStructures, categories, onExit }) {
+  const [activeIndices, setActiveIndices] = useState([0, 1]);
   const [monitorTab, setMonitorTab] = useState('live');
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     if (!timeSlots || timeSlots.length === 0) return;
     
-    const updateCurrentSlot = () => {
-        let foundIndex = -1;
+    const findActiveSlots = () => {
+        let firstUnfinished = -1;
         for (let i = 0; i < timeSlots.length; i++) {
             const slot = timeSlots[i];
             let isCompleted = true;
@@ -693,16 +685,35 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                 }
             }
             if (!isCompleted) {
-                foundIndex = i;
+                firstUnfinished = i;
                 break;
             }
         }
-        setCurrentSlotIndex(foundIndex !== -1 ? foundIndex : Math.max(0, timeSlots.length - 1));
+        
+        if (firstUnfinished !== -1) {
+            let secondUnfinished = firstUnfinished + 1;
+            while (secondUnfinished < timeSlots.length) {
+                const slot = timeSlots[secondUnfinished];
+                let isCompleted = true;
+                for (const id of slot.matchIds) {
+                    const match = matchData[id];
+                    if (match && match.score !== 'Freilos' && !match.winner) {
+                        isCompleted = false;
+                        break;
+                    }
+                }
+                if (!isCompleted) break;
+                secondUnfinished++;
+            }
+            if (secondUnfinished >= timeSlots.length) secondUnfinished = firstUnfinished;
+            setActiveIndices([firstUnfinished, Math.min(secondUnfinished, timeSlots.length - 1)]);
+        } else {
+            const last = Math.max(0, timeSlots.length - 1);
+            setActiveIndices([Math.max(0, last - 1), last]);
+        }
     };
     
-    updateCurrentSlot();
-    const interval = setInterval(updateCurrentSlot, 10000); 
-    return () => clearInterval(interval);
+    findActiveSlots();
   }, [timeSlots, matchData]);
 
   if (!timeSlots || timeSlots.length === 0) {
@@ -718,8 +729,8 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
       );
   }
 
-  const currentSlot = timeSlots[currentSlotIndex];
-  const nextSlot = timeSlots.length > currentSlotIndex + 1 ? timeSlots[currentSlotIndex + 1] : null;
+  const slot1 = timeSlots[activeIndices[0]];
+  const slot2 = timeSlots[activeIndices[1]];
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans relative overflow-hidden w-full">
@@ -732,17 +743,12 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                 </div>
             </div>
             <div className="flex items-center gap-4 md:gap-6">
-                <div className="text-right hidden sm:block">
-                    <div className="text-2xl md:text-3xl font-bold font-mono">{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                    <div className="text-xs md:text-sm text-slate-400 font-medium">Aktuelle Uhrzeit</div>
-                </div>
-                <button onClick={onExit} className="p-2 md:p-3 rounded-full hover:bg-slate-700 text-slate-400 transition-colors" title="Monitoransicht beenden & Ausloggen">
+                <button onClick={onExit} className="p-2 md:p-3 rounded-full hover:bg-slate-700 text-slate-400 transition-colors" title="Monitoransicht beenden">
                     <X size={24} />
                 </button>
             </div>
         </header>
 
-        {}
         <div className="flex bg-slate-800 p-2 md:p-4 gap-2 justify-center border-b border-slate-700 xl:hidden">
             <button onClick={() => setMonitorTab('live')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'live' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700'}`}>Live Spiele</button>
             <button onClick={() => setMonitorTab('brackets')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'brackets' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700'}`}>Tabellen & Turnierbaum</button>
@@ -751,14 +757,14 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
         <div className="flex-1 p-4 md:p-8 flex flex-col gap-8 overflow-y-auto pb-32 w-full text-center">
             {monitorTab === 'live' ? (
                 <>
-                    {currentSlot && (
+                    {slot1 && (
                         <section className="bg-slate-800 rounded-2xl p-4 md:p-6 shadow-2xl border border-teal-900/50 w-full text-left">
                             <h2 className="text-xl md:text-2xl font-bold mb-6 flex items-center gap-3 text-white">
                                 <span className="bg-teal-500 text-white px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm">Aktuell</span>
-                                <Clock className="text-teal-400" /> {currentSlot.time} - {currentSlot.endTime} Uhr
+                                <Clock className="text-teal-400" /> {slot1.time || ''} - {slot1.endTime || ''} Uhr
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-                                {currentSlot.matchIds.map(id => {
+                                {(slot1.matchIds || []).map(id => {
                                     const match = matchData[id];
                                     if (!match) return null;
                                     return <MonitorMatchCard key={id} match={match} />
@@ -767,14 +773,14 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                         </section>
                     )}
 
-                    {nextSlot && (
+                    {slot2 && (
                         <section className="bg-slate-800/50 rounded-2xl p-4 md:p-6 border border-slate-700 w-full text-left">
                             <h2 className="text-lg md:text-xl font-bold mb-6 flex items-center gap-3 text-slate-300">
                                 <span className="bg-slate-700 text-slate-300 px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm">Als nächstes</span>
-                                <Clock className="text-slate-400" /> {nextSlot.time} - {nextSlot.endTime} Uhr
+                                <Clock className="text-slate-400" /> {slot2.time || ''} - {slot2.endTime || ''} Uhr
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 opacity-80">
-                                {nextSlot.matchIds.map(id => {
+                                {(slot2.matchIds || []).map(id => {
                                     const match = matchData[id];
                                     if (!match) return null;
                                     return <MonitorMatchCard key={id} match={match} />
@@ -790,7 +796,7 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
             )}
         </div>
 
-        <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 bg-white p-3 md:p-4 rounded-xl shadow-2xl flex flex-col items-center gap-2 border-4 border-slate-800">
+        <div className="hidden xl:flex absolute bottom-4 right-4 md:bottom-6 md:right-6 bg-white p-3 md:p-4 rounded-xl shadow-2xl flex-col items-center gap-2 border-4 border-slate-800">
             <img src="adobe-express-qr-code (3).png" alt="QR Code" className="w-[100px] h-[100px] object-contain rounded bg-white p-1" />
             <span className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-wider">Plan auf dem Handy</span>
         </div>
@@ -799,27 +805,28 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
 }
 
 function MonitorMatchCard({ match }) {
-    const isPlaceholder = match.player1.includes('Gruppe') || match.player1.includes('Sieger') || match.player1.includes('Platz');
+    if (!match) return null;
+    const isPlaceholder = (match.player1 || '').includes('Gruppe') || (match.player1 || '').includes('Sieger') || (match.player1 || '').includes('Platz');
     
     return (
         <div className={`rounded-xl p-4 md:p-5 flex flex-col gap-3 h-full border-2 ${match.isFinal ? 'bg-amber-900/20 border-amber-500/50' : 'bg-slate-700/50 border-slate-600'}`}>
             <div className="flex justify-between items-start">
                 <div className="flex flex-col gap-1">
-                    <span className="text-[10px] md:text-xs font-bold text-teal-400 uppercase tracking-wider">{match.category}</span>
-                    <span className="text-xs md:text-sm font-medium text-slate-300">{match.type} {match.name && `- ${match.name}`}</span>
+                    <span className="text-[10px] md:text-xs font-bold text-teal-400 uppercase tracking-wider">{match.category || ''}</span>
+                    <span className="text-xs md:text-sm font-medium text-slate-300">{match.type || ''} {match.name && `- ${match.name}`}</span>
                 </div>
                 <div className="bg-slate-900 text-white font-black text-lg md:text-xl w-8 h-8 md:w-10 md:h-10 rounded-lg flex items-center justify-center shadow-inner shrink-0 ml-2">
-                    {match.court}
+                    {match.court || 1}
                 </div>
             </div>
             
             <div className="flex flex-col gap-3 mt-2 flex-grow justify-center">
                 <div className={`font-medium text-base md:text-lg leading-tight break-words ${match.winner === match.player1 ? 'text-teal-300 font-bold' : 'text-white'}`}>
-                    {match.player1}
+                    {match.player1 || ''}
                 </div>
                 <div className="text-xs md:text-sm text-slate-500 font-serif italic text-center w-full my-[-8px]">vs</div>
                 <div className={`font-medium text-base md:text-lg leading-tight break-words ${match.winner === match.player2 ? 'text-teal-300 font-bold' : 'text-white'}`}>
-                    {match.player2}
+                    {match.player2 || ''}
                 </div>
             </div>
 
@@ -838,34 +845,208 @@ function MonitorMatchCard({ match }) {
     );
 }
 
-function LoginScreen({ onLogin, onMonitor }) {
+function SpielleiterView({ timeSlots, matchData, onSaveResult, isSavingToCloud, onExit }) {
+    if (!timeSlots || timeSlots.length === 0) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-8 text-slate-800 w-full relative">
+               <button onClick={onExit} className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-200 text-slate-500 transition-colors">
+                  <X size={24} />
+               </button>
+               <Calendar className="w-16 h-16 text-slate-300 mb-4" />
+               <p className="text-lg text-slate-500 text-center font-medium">Noch kein Spielplan vorhanden.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans relative w-full">
+            <header className="bg-teal-700 p-4 shadow-md sticky top-0 z-50 flex justify-between items-center w-full">
+                <div className="flex items-center gap-3">
+                    <Edit2 className="w-6 h-6 text-teal-200" />
+                    <div>
+                        <h1 className="text-lg font-bold text-white leading-tight">Spielleiter</h1>
+                        <p className="text-teal-200 text-xs font-medium flex items-center gap-1">
+                            {isSavingToCloud ? <Cloud className="animate-pulse w-3 h-3" /> : <Cloud className="w-3 h-3" />}
+                            {isSavingToCloud ? 'Speichert...' : 'Live-Sync aktiv'}
+                        </p>
+                    </div>
+                </div>
+                <button onClick={onExit} className="p-2 rounded-lg bg-teal-800 hover:bg-teal-900 text-white transition-colors text-sm font-medium flex items-center gap-2">
+                    <LogIn size={16} className="rotate-180 hidden sm:block" /> Logout
+                </button>
+            </header>
+
+            <div className="flex-1 p-3 sm:p-6 flex flex-col gap-6 overflow-y-auto w-full pb-20">
+                {timeSlots.map((slot, index) => {
+                    const matchIds = slot.matchIds || [];
+                    const hasMatches = matchIds.some(id => matchData && matchData[id] && matchData[id].score !== 'Freilos');
+                    if (!hasMatches) return null;
+
+                    return (
+                        <div key={index} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden w-full">
+                            <div className={`px-4 py-2 border-b flex items-center justify-between sticky top-0 z-40 ${slot.slotType === 'final' ? 'bg-amber-100 border-amber-200' : 'bg-slate-100 border-slate-200'}`}>
+                                <div className="flex items-center gap-2 font-bold text-base text-slate-800">
+                                    <Clock size={16} className={slot.slotType === 'final' ? 'text-amber-600' : 'text-slate-500'} />
+                                    {slot.time || ''} - {slot.endTime || ''}
+                                </div>
+                                {slot.slotType === 'final' && (
+                                    <span className="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1"><Trophy size={10} /> Finals</span>
+                                )}
+                            </div>
+                            <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
+                                {matchIds.map(id => {
+                                    const match = matchData ? matchData[id] : null;
+                                    if (!match || match.score === 'Freilos') return null;
+                                    return <SpielleiterMatchCard key={id} match={match} onSaveResult={onSaveResult} />;
+                                })}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function SpielleiterMatchCard({ match, onSaveResult }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [scoreInput, setScoreInput] = useState(match?.score || '');
+    const [winnerInput, setWinnerInput] = useState(match?.winner || '');
+
+    useEffect(() => {
+        setScoreInput(match?.score || '');
+        setWinnerInput(match?.winner || '');
+    }, [match?.score, match?.winner]);
+
+    if (!match) return null;
+    const p1 = match?.player1 || '';
+    const isPlaceholder = p1.includes('Gruppe') || p1.includes('Sieger') || p1.includes('Platz');
+
+    const handleScoreChange = (e) => {
+        const val = e.target.value;
+        setScoreInput(val);
+        
+        if (!match.isFinal) {
+            const parsed = val.match(/^(\d+)\s*:\s*(\d+)$/);
+            if (parsed) {
+                const s1 = parseInt(parsed[1], 10);
+                const s2 = parseInt(parsed[2], 10);
+                if (s1 > s2) setWinnerInput(match.player1);
+                else if (s2 > s1) setWinnerInput(match.player2);
+                else setWinnerInput('');
+            } else {
+                setWinnerInput('');
+            }
+        }
+    };
+
+    const handleSave = () => {
+        onSaveResult(match.id, scoreInput, winnerInput);
+        setIsEditing(false);
+    };
+
+    return (
+        <div className={`border-2 rounded-xl p-4 relative flex flex-col h-full w-full ${match.isFinal ? 'border-amber-300 bg-amber-50/30' : 'border-slate-200 bg-white shadow-sm'}`}>
+            <div className="flex justify-between items-start mb-3">
+                <div>
+                    <div className="text-xs font-black text-teal-600 uppercase tracking-wider">{match.category || ''}</div>
+                    <div className="text-xs font-semibold text-slate-500">{match.type || ''} {match.name && `- ${match.name}`}</div>
+                </div>
+                <div className="bg-slate-800 text-white font-bold text-lg w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-sm">
+                    {match.court || 1}
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-2 flex-grow mt-1">
+                <div className={`font-medium text-base leading-tight break-words flex gap-2 ${match.winner === match.player1 ? 'text-teal-700 font-bold' : 'text-slate-800'}`}>
+                    <span className="text-slate-400 font-mono text-sm mt-0.5">1</span> {match.player1 || ''}
+                </div>
+                <div className="text-xs text-slate-400 font-serif italic py-0.5">vs</div>
+                <div className={`font-medium text-base leading-tight break-words flex gap-2 ${match.winner === match.player2 ? 'text-teal-700 font-bold' : 'text-slate-800'}`}>
+                    <span className="text-slate-400 font-mono text-sm mt-0.5">2</span> {match.player2 || ''}
+                </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-100">
+                {!isPlaceholder ? (
+                    !isEditing && match.winner ? (
+                        <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 active:bg-slate-100 cursor-pointer" onClick={() => setIsEditing(true)}>
+                            <div className="text-base font-bold text-slate-800">{match.score || ''}</div>
+                            <div className="text-teal-600 flex items-center gap-1 text-sm font-medium"><Edit2 size={16} /> Ändern</div>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            <input 
+                                type="text" 
+                                inputMode="text"
+                                placeholder={match.isFinal ? "z.B. 6:4, 6:2" : "z.B. 10:5"} 
+                                className="w-full text-base p-3 border-2 border-slate-300 rounded-lg focus:border-teal-500 focus:ring-2 focus:ring-teal-200 outline-none font-bold text-center" 
+                                value={scoreInput} 
+                                onChange={handleScoreChange} 
+                            />
+                            
+                            {match.isFinal ? (
+                                <div className="flex flex-col gap-2">
+                                    <div className="text-xs text-center text-slate-500 font-medium">Wer hat gewonnen?</div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setWinnerInput(match.player1)} className={`flex-1 text-xs sm:text-sm py-2.5 rounded-lg border-2 transition-colors font-bold ${winnerInput === match.player1 ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>Sieg 1</button>
+                                        <button onClick={() => setWinnerInput(match.player2)} className={`flex-1 text-xs sm:text-sm py-2.5 rounded-lg border-2 transition-colors font-bold ${winnerInput === match.player2 ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>Sieg 2</button>
+                                    </div>
+                                    <button onClick={handleSave} disabled={!winnerInput || !scoreInput} className="w-full bg-teal-600 text-white text-sm py-3 rounded-lg font-bold shadow-md disabled:opacity-50 mt-1 flex justify-center items-center gap-2"><Check size={18} /> Speichern</button>
+                                </div>
+                            ) : (
+                                <button onClick={handleSave} disabled={!winnerInput || !scoreInput} className="w-full bg-teal-600 text-white text-sm py-3 rounded-lg font-bold shadow-md disabled:opacity-50 flex justify-center items-center gap-2 transition-colors"><Check size={18} /> Ergebnis Speichern</button>
+                            )}
+                        </div>
+                    )
+                ) : (
+                    <div className="text-sm text-center text-slate-400 font-medium bg-slate-50 py-3 rounded-lg border border-slate-100">
+                       Wartet auf Vorrunden
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function LoginScreen({ onLoginAdmin, onLoginSpielleiter, onMonitor, initialMode }) {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [loginType, setLoginType] = useState(initialMode === 'spielleiter' ? 'spielleiter' : 'admin');
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        if (password === 'tcw2026') {
-            onLogin();
-        } else {
-            setError('Falsches Passwort');
-            setPassword('');
+        if (loginType === 'admin') {
+            if (password === 'tcw2026') onLoginAdmin();
+            else setError('Falsches Admin-Passwort');
+        } else if (loginType === 'spielleiter') {
+            if (password === 'ergebnis26') onLoginSpielleiter();
+            else setError('Falsches Spielleiter-Passwort');
         }
+        if (error) setPassword('');
     };
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 w-full">
             <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-100">
-                <div className="flex flex-col items-center mb-8">
+                <div className="flex flex-col items-center mb-6">
                     <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mb-4">
                         <Lock className="w-8 h-8 text-teal-600" />
                     </div>
                     <h1 className="text-2xl font-bold text-slate-800 text-center">TC Wannweil</h1>
-                    <p className="text-slate-500 text-sm mt-1">Turnierverwaltung & Monitor</p>
+                    <p className="text-slate-500 text-sm mt-1">Turnier Login</p>
                 </div>
                 
+                <div className="flex bg-slate-100 p-1 rounded-lg mb-6">
+                    <button type="button" onClick={() => {setLoginType('admin'); setError(''); setPassword('');}} className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${loginType === 'admin' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Verwaltung</button>
+                    <button type="button" onClick={() => {setLoginType('spielleiter'); setError(''); setPassword('');}} className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${loginType === 'spielleiter' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Spielleiter</button>
+                </div>
+
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                     <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">Passwort (für Verwaltung)</label>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                            {loginType === 'admin' ? 'Admin Passwort' : 'Spielleiter Passwort'}
+                        </label>
                         <input 
                             type="password" 
                             autoFocus
@@ -877,7 +1058,7 @@ function LoginScreen({ onLogin, onMonitor }) {
                         {error && <p className="text-red-500 text-xs mt-2 font-medium">{error}</p>}
                     </div>
                     <button type="submit" className="w-full bg-teal-600 text-white font-bold py-3 rounded-lg hover:bg-teal-700 transition-colors flex items-center justify-center gap-2 mt-2">
-                        <LogIn size={18} /> Verwaltung starten
+                        <LogIn size={18} /> {loginType === 'admin' ? 'Verwaltung starten' : 'Erfassung starten'}
                     </button>
                 </form>
                 
@@ -887,10 +1068,6 @@ function LoginScreen({ onLogin, onMonitor }) {
                     </button>
                     <p className="text-center text-xs text-slate-400 mt-3">Ideal für Smartphones oder den TV im Vereinsheim.</p>
                 </div>
-            </div>
-            
-            <div className="mt-8 text-center text-xs text-slate-400">
-                Standardpasswort: tcw2026
             </div>
         </div>
     );
@@ -904,17 +1081,21 @@ export default function App() {
   const [viewMode, setViewMode] = useState(() => {
       if (typeof window !== 'undefined') {
           const params = new URLSearchParams(window.location.search);
-          return params.get('mode') === 'monitor' ? 'monitor' : 'manage';
+          const m = params.get('mode');
+          if (m === 'monitor') return 'monitor';
+          if (m === 'spielleiter') return 'spielleiter';
       }
       return 'manage';
   });
   
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+  const [loginRole, setLoginRole] = useState(() => {
       if (typeof window !== 'undefined') {
           const params = new URLSearchParams(window.location.search);
-          return params.get('mode') === 'monitor';
+          const m = params.get('mode');
+          if (m === 'monitor') return 'monitor';
+          if (m === 'spielleiter') return 'spielleiter';
       }
-      return false;
+      return null;
   });
   
   const [activeTab, setActiveTab] = useState('applications');
@@ -936,12 +1117,12 @@ export default function App() {
   const [groupCounts, setGroupCounts] = useState({});
 
   const [startTime, setStartTime] = useState('09:00');
-  const [numCourts, setNumCourts] = useState(6); // Default 6
+  const [numCourts, setNumCourts] = useState(6);
   const [matchDuration, setMatchDuration] = useState(30);
   const [breakDuration, setBreakDuration] = useState(10);
   const [finalDuration, setFinalDuration] = useState(90);
   
-  const [scheduleAllFinalsAtEnd, setScheduleAllFinalsAtEnd] = useState(true); // Default true
+  const [scheduleAllFinalsAtEnd, setScheduleAllFinalsAtEnd] = useState(true);
   
   const [participants, setParticipants] = useState(() => {
     const initial = {};
@@ -955,7 +1136,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   
   const fileInputRef = useRef(null);
-  const currentUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?mode=monitor` : '';
+  const appFileInputRef = useRef(null);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -1017,14 +1198,14 @@ export default function App() {
       }
   }, [firebaseUser, isFirebaseInitialized]);
 
-  // Real-time synchronization for the Monitor View
+  // Real-time synchronization for Monitor & Spielleiter Views
   useEffect(() => {
       if (!firebaseUser || !isFirebaseInitialized) return;
       const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentData', 'main');
       const unsub = onSnapshot(docRef, (snap) => {
           if (snap.exists()) {
               const data = snap.data();
-              if (viewMode === 'monitor') {
+              if (viewMode === 'monitor' || viewMode === 'spielleiter') {
                   if (data.__categories) setCategories(data.__categories);
                   if (data.__timeSlots) setTimeSlots(data.__timeSlots);
                   if (data.__matchData) setMatchData(data.__matchData);
@@ -1070,7 +1251,7 @@ export default function App() {
 
   // Continuous Auto-Save Trigger for all state changes in management view
   useEffect(() => {
-      if (!isFirebaseInitialized || !firebaseUser || viewMode === 'monitor') return;
+      if (!isFirebaseInitialized || !firebaseUser || viewMode === 'monitor' || viewMode === 'spielleiter') return;
       const timeout = setTimeout(() => {
           saveToCloud();
       }, 1500);
@@ -1138,6 +1319,34 @@ export default function App() {
           });
           setRawAppInput('');
       }
+  };
+
+  const handleExportApplications = () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(applications, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", "anmeldungen_tc_wannweil.json");
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+  };
+
+  const handleImportApplications = (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          try {
+              const loaded = JSON.parse(e.target.result);
+              if (loaded && typeof loaded === 'object') {
+                  setApplications(prev => ({ ...prev, ...loaded }));
+              }
+          } catch (err) {
+              console.error("Fehler beim Importieren der Anmeldungen:", err);
+          }
+          event.target.value = '';
+      };
+      reader.readAsText(file);
   };
 
   const transferToParticipants = () => {
@@ -1210,12 +1419,26 @@ export default function App() {
       );
   }
 
-  if (!isAuthenticated && viewMode !== 'monitor') {
+  if (loginRole === null && viewMode !== 'monitor') {
       return (
           <LoginScreen 
-              onLogin={() => setIsAuthenticated(true)} 
+              initialMode={viewMode}
+              onLoginAdmin={() => {
+                  setLoginRole('admin');
+                  setViewMode('manage');
+                  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+                      window.history.pushState({}, document.title, window.location.origin + window.location.pathname);
+                  }
+              }}
+              onLoginSpielleiter={() => {
+                  setLoginRole('spielleiter');
+                  setViewMode('spielleiter');
+                  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+                      window.history.pushState({}, document.title, window.location.origin + window.location.pathname + '?mode=spielleiter');
+                  }
+              }} 
               onMonitor={() => { 
-                  setIsAuthenticated(true); 
+                  setLoginRole('monitor'); 
                   setViewMode('monitor'); 
                   if (typeof window !== 'undefined' && window.history && window.history.pushState) {
                       window.history.pushState({}, document.title, window.location.origin + window.location.pathname + '?mode=monitor');
@@ -1232,13 +1455,28 @@ export default function App() {
           tournamentStructures={tournamentStructures}
           categories={categories}
           onExit={() => { 
-              setIsAuthenticated(false); 
+              setLoginRole(null); 
               setViewMode('manage'); 
               if (typeof window !== 'undefined' && window.history && window.history.pushState) {
                   window.history.pushState({}, document.title, window.location.origin + window.location.pathname);
               }
           }} 
-          currentUrl={currentUrl} 
+      />;
+  }
+
+  if (viewMode === 'spielleiter') {
+      return <SpielleiterView 
+          timeSlots={timeSlots} 
+          matchData={matchData} 
+          onSaveResult={handleUpdateResult}
+          isSavingToCloud={isSavingToCloud}
+          onExit={() => { 
+              setLoginRole(null); 
+              setViewMode('manage'); 
+              if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+                  window.history.pushState({}, document.title, window.location.origin + window.location.pathname);
+              }
+          }} 
       />;
   }
 
@@ -1374,23 +1612,27 @@ export default function App() {
     return participants[category]?.split('\n').map(p => p.trim()).filter(p => p.length > 0) || [];
   };
 
-  const handleUpdateResult = (matchId, score, winner) => {
+  function handleUpdateResult(matchId, score, winner) {
     setMatchData(prevMatches => {
       let nextMatches = JSON.parse(JSON.stringify(prevMatches));
-      nextMatches[matchId].score = score;
-      nextMatches[matchId].winner = winner;
+      if (nextMatches[matchId]) {
+          nextMatches[matchId].score = score;
+          nextMatches[matchId].winner = winner;
+      }
       
       nextMatches = processTournamentProgressPure(nextMatches, tournamentStructures, categories);
       setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals));
       
       return nextMatches;
     });
-  };
+  }
 
   const handleManualTimeChange = (matchId, newTime) => {
     setMatchData(prevMatches => {
         let nextMatches = JSON.parse(JSON.stringify(prevMatches));
-        nextMatches[matchId].manualTime = newTime;
+        if (nextMatches[matchId]) {
+            nextMatches[matchId].manualTime = newTime;
+        }
         
         setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals));
         return nextMatches;
@@ -1641,7 +1883,7 @@ export default function App() {
              <button onClick={() => setViewMode('monitor')} className="flex items-center gap-2 bg-teal-800 hover:bg-teal-900 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-teal-600">
                 <Monitor size={18} /> Monitor-Ansicht
              </button>
-             <button onClick={() => setIsAuthenticated(false)} className="flex items-center gap-2 bg-teal-800 hover:bg-teal-900 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-teal-600">
+             <button onClick={() => setLoginRole(null)} className="flex items-center gap-2 bg-teal-800 hover:bg-teal-900 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-teal-600">
                 <LogIn size={18} className="rotate-180" /> Logout
              </button>
           </div>
@@ -1670,10 +1912,19 @@ export default function App() {
                     <p>Wenn ein Spieler erneut eingefügt wird (gleicher Name), werden seine neuen Kategorien und Partner hinzugefügt.</p>
                   </div>
                 </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <input type="file" accept=".json" ref={appFileInputRef} onChange={handleImportApplications} className="hidden" />
+                  <button onClick={() => appFileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-teal-200" title="Anmeldungen importieren (.json)">
+                    <Upload size={16} /> Importieren
+                  </button>
+                  <button onClick={handleExportApplications} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-teal-200" title="Anmeldungen exportieren (.json)">
+                    <Download size={16} /> Exportieren
+                  </button>
+                </div>
               </div>
 
               <div className="flex flex-col md:flex-row gap-8 w-full">
-                 {/* Linke Seite: Eingabe */}
                  <div className="w-full md:w-1/3 flex flex-col gap-3">
                     <label className="text-sm font-bold text-slate-700">Neue Anmeldung einfügen:</label>
                     <textarea 
@@ -1687,7 +1938,6 @@ export default function App() {
                     </button>
                  </div>
                  
-                 {/* Rechte Seite: Liste */}
                  <div className="w-full md:w-2/3 flex flex-col gap-3">
                     <div className="flex justify-between items-end mb-1">
                         <label className="text-sm font-bold text-slate-700">Erfasste Spieler ({Object.keys(applications).length})</label>
@@ -1889,7 +2139,6 @@ export default function App() {
           </div>
         )}
 
-        {}
         {activeTab === 'settings' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 w-full">
@@ -1940,7 +2189,6 @@ export default function App() {
           </div>
         )}
 
-        {}
         {activeTab === 'schedule' && timeSlots && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
             <div className="flex justify-between items-center mb-6 print:hidden w-full">
@@ -1976,10 +2224,10 @@ export default function App() {
                                 if (!match) return null;
                                 return (
                                     <tr key={id} className="break-inside-avoid">
-                                        <td className="border border-slate-300 p-2 whitespace-nowrap">{slot.time} - {slot.endTime}</td>
-                                        <td className="border border-slate-300 p-2 text-center font-semibold">{match.court}</td>
-                                        <td className="border border-slate-300 p-2 font-medium">{match.category} <span className="text-slate-500 font-normal">({match.type})</span></td>
-                                        <td className="border border-slate-300 p-2 break-words">{match.player1} <span className="text-slate-400 italic px-2">vs</span> {match.player2}</td>
+                                        <td className="border border-slate-300 p-2 whitespace-nowrap">{slot.time || ''} - {slot.endTime || ''}</td>
+                                        <td className="border border-slate-300 p-2 text-center font-semibold">{match.court || 1}</td>
+                                        <td className="border border-slate-300 p-2 font-medium">{match.category || ''} <span className="text-slate-500 font-normal">({match.type || ''})</span></td>
+                                        <td className="border border-slate-300 p-2 break-words">{match.player1 || ''} <span className="text-slate-400 italic px-2">vs</span> {match.player2 || ''}</td>
                                         <td className="border border-slate-300 p-2 font-bold text-center w-24">{match.score || ''}</td>
                                     </tr>
                                 );
@@ -1995,7 +2243,7 @@ export default function App() {
                   <div className={`px-4 py-3 border-b flex items-center justify-between ${slot.slotType === 'final' ? 'bg-amber-100 border-amber-200' : 'bg-slate-100 border-slate-200'}`}>
                     <div className="flex items-center gap-2 font-bold text-lg text-slate-800">
                       <Clock size={20} className={slot.slotType === 'final' ? 'text-amber-600' : 'text-slate-500'} />
-                      {slot.time} - {slot.endTime} Uhr
+                      {slot.time || ''} - {slot.endTime || ''} Uhr
                     </div>
                     {slot.slotType === 'final' && (
                       <span className="bg-amber-500 text-white text-xs px-2 py-1 rounded font-bold uppercase tracking-wider flex items-center gap-1"><Trophy size={12} /> Finals</span>
@@ -2003,7 +2251,7 @@ export default function App() {
                   </div>
 
                   <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
-                    {slot.matchIds.map(id => {
+                    {(slot.matchIds || []).map(id => {
                       const match = matchData[id];
                       if (!match) return null;
                       return <MatchCard key={id} match={match} onSaveResult={handleUpdateResult} onManualTimeChange={handleManualTimeChange} />;
@@ -2022,7 +2270,6 @@ export default function App() {
           </div>
         )}
 
-        {}
         {activeTab === 'brackets' && tournamentStructures && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
             <div className="flex justify-between items-center mb-6 print:hidden w-full">
@@ -2048,15 +2295,16 @@ function TabButton({ active, onClick, icon, label, disabled, highlight }) {
 
 function MatchCard({ match, onSaveResult, onManualTimeChange }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [scoreInput, setScoreInput] = useState(match.score || '');
-  const [winnerInput, setWinnerInput] = useState(match.winner || '');
+  const [scoreInput, setScoreInput] = useState(match?.score || '');
+  const [winnerInput, setWinnerInput] = useState(match?.winner || '');
 
   useEffect(() => {
-     setScoreInput(match.score || '');
-     setWinnerInput(match.winner || '');
-  }, [match.score, match.winner]);
+     setScoreInput(match?.score || '');
+     setWinnerInput(match?.winner || '');
+  }, [match?.score, match?.winner]);
 
-  const isPlaceholder = match.player1.includes('Gruppe') || match.player1.includes('Sieger') || match.player1.includes('Platz');
+  if (!match) return null;
+  const isPlaceholder = (match.player1 || '').includes('Gruppe') || (match.player1 || '').includes('Sieger') || (match.player1 || '').includes('Platz');
 
   const handleScoreChange = (e) => {
       const val = e.target.value;
@@ -2086,22 +2334,22 @@ function MatchCard({ match, onSaveResult, onManualTimeChange }) {
   return (
     <div className={`border rounded-lg p-3 relative flex flex-col h-full w-full ${match.isFinal ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-white shadow-sm'}`}>
       <div className="text-xs font-semibold text-teal-600 mb-1 flex justify-between items-center">
-        <span className="break-words pr-2">{match.category}</span>
-        <span className="text-slate-400 font-normal whitespace-nowrap">Platz {match.court}</span>
+        <span className="break-words pr-2">{match.category || ''}</span>
+        <span className="text-slate-400 font-normal whitespace-nowrap">Platz {match.court || 1}</span>
       </div>
       
-      {!match.isFinal && <div className="text-xs text-slate-500 mb-2 uppercase tracking-wide font-bold">{match.type} {match.name && `- ${match.name}`}</div>}
-      {match.isFinal && <div className="text-xs text-amber-600 mb-2 uppercase tracking-wide font-bold flex items-center gap-1"><Trophy size={12}/> {match.type}</div>}
+      {!match.isFinal && <div className="text-xs text-slate-500 mb-2 uppercase tracking-wide font-bold">{match.type || ''} {match.name && `- ${match.name}`}</div>}
+      {match.isFinal && <div className="text-xs text-amber-600 mb-2 uppercase tracking-wide font-bold flex items-center gap-1"><Trophy size={12}/> {match.type || 'Finale'}</div>}
 
       <div className="flex flex-col gap-2 flex-grow">
         <div className={`font-medium text-sm flex items-start gap-2 ${match.winner === match.player1 ? 'text-teal-700 font-bold' : 'text-slate-700'}`}>
           <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 flex-shrink-0 mt-0.5">1</span>
-          <span className="break-words">{match.player1}</span>
+          <span className="break-words">{match.player1 || ''}</span>
         </div>
         <div className="text-[10px] text-slate-300 text-center font-serif italic my-[-4px]">vs</div>
         <div className={`font-medium text-sm flex items-start gap-2 ${match.winner === match.player2 ? 'text-teal-700 font-bold' : 'text-slate-700'}`}>
           <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 flex-shrink-0 mt-0.5">2</span>
-          <span className="break-words">{match.player2}</span>
+          <span className="break-words">{match.player2 || ''}</span>
         </div>
       </div>
 
@@ -2109,7 +2357,7 @@ function MatchCard({ match, onSaveResult, onManualTimeChange }) {
         {!isPlaceholder ? (
           !isEditing && match.winner ? (
             <div className="flex justify-between items-center bg-slate-50 p-2 rounded border border-slate-100">
-              <div className="text-sm font-bold text-slate-800">{match.score}</div>
+              <div className="text-sm font-bold text-slate-800">{match.score || ''}</div>
               <button onClick={() => setIsEditing(true)} className="text-slate-400 hover:text-teal-600 transition-colors p-1" title="Ergebnis bearbeiten"><Edit2 size={14} /></button>
             </div>
           ) : (
