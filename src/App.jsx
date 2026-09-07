@@ -742,7 +742,8 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
             </div>
         </header>
 
-        <div className="flex bg-slate-800 p-2 md:p-4 gap-2 justify-center border-b border-slate-700">
+        {}
+        <div className="flex bg-slate-800 p-2 md:p-4 gap-2 justify-center border-b border-slate-700 xl:hidden">
             <button onClick={() => setMonitorTab('live')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'live' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700'}`}>Live Spiele</button>
             <button onClick={() => setMonitorTab('brackets')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'brackets' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700'}`}>Tabellen & Turnierbaum</button>
         </div>
