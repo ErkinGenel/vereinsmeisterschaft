@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, Settings, Trophy, Clock, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X, Monitor, LogIn, Lock, Cloud, Inbox, ArrowRight } from 'lucide-react';
+import { Calendar, Users, Settings, Trophy, Clock, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X, Monitor, LogIn, Lock, Cloud, CloudUpload, Info, Inbox, ArrowRight } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
@@ -57,57 +57,6 @@ const getKnockoutSeeds = (size) => {
 };
 
 const getRoundName = (rs) => rs === 4 ? 'VF' : (rs === 2 ? 'HF' : (rs === 8 ? 'AF' : `R${rs*2}`));
-
-function SimpleQRCode({ value, size = 100 }) {
-  const hashString = (str) => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = ((hash << 5) - hash) + str.charCodeAt(i);
-      hash |= 0;
-    }
-    return Math.abs(hash);
-  };
-
-  const seed = hashString(value || 'tc-wannweil');
-  const modules = 21; 
-  const cellSize = size / modules;
-  
-  let rects = [];
-  const isFinder = (r, c) => {
-    return (r <= 6 && c <= 6) || (r <= 6 && c >= modules - 7) || (r >= modules - 7 && c <= 6);
-  };
-
-  for (let r = 0; r < modules; r++) {
-    for (let c = 0; c < modules; c++) {
-      if (!isFinder(r, c)) {
-        let bit = ((seed + r * 31 + c * 17) % 3 === 0);
-        if (bit) {
-          rects.push(<rect key={`${r}-${c}`} x={c * cellSize} y={r * cellSize} width={cellSize} height={cellSize} fill="#0f172a" />);
-        }
-      }
-    }
-  }
-
-  const renderFinder = (x, y) => {
-    return (
-      <g key={`finder-${x}-${y}`}>
-        <rect x={x * cellSize} y={y * cellSize} width={7 * cellSize} height={7 * cellSize} fill="#0f172a" rx={cellSize} />
-        <rect x={(x + 1) * cellSize} y={(y + 1) * cellSize} width={5 * cellSize} height={5 * cellSize} fill="#ffffff" rx={cellSize} />
-        <rect x={(x + 2) * cellSize} y={(y + 2) * cellSize} width={3 * cellSize} height={3 * cellSize} fill="#0f172a" />
-      </g>
-    );
-  };
-
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="bg-white p-1 rounded">
-      <rect width={size} height={size} fill="#ffffff" />
-      {renderFinder(0, 0)}
-      {renderFinder(modules - 7, 0)}
-      {renderFinder(0, modules - 7)}
-      {rects}
-    </svg>
-  );
-}
 
 const calculateStandings = (groupName, structure, catMatches) => {
     const groupMatches = catMatches.filter(m => m.stage === 'group' && m.groupName === groupName);
@@ -544,6 +493,8 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
     combinedSlots.sort((a, b) => parseTime(a.time) - parseTime(b.time));
     combinedSlots.forEach((slot, idx) => {
         slot.slotIndex = idx;
+        // WICHTIG: Firebase kann keine JavaScript 'Set' Objekte speichern. 
+        // Wir löschen das Hilfsobjekt, bevor es in die Datenbank wandert.
         if (slot.activePlayers) {
             delete slot.activePlayers;
         }
@@ -717,14 +668,20 @@ function BracketsView({ categories, tournamentStructures, matchData }) {
 }
 
 function MonitorView({ timeSlots, matchData, tournamentStructures, categories, onExit, currentUrl }) {
-  const [activeIndices, setActiveIndices] = useState([0, 1]);
+  const [currentSlotIndex, setCurrentSlotIndex] = useState(0);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const [monitorTab, setMonitorTab] = useState('live');
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!timeSlots || timeSlots.length === 0) return;
     
-    const findActiveSlots = () => {
-        let firstUnfinished = -1;
+    const updateCurrentSlot = () => {
+        let foundIndex = -1;
         for (let i = 0; i < timeSlots.length; i++) {
             const slot = timeSlots[i];
             let isCompleted = true;
@@ -736,35 +693,16 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                 }
             }
             if (!isCompleted) {
-                firstUnfinished = i;
+                foundIndex = i;
                 break;
             }
         }
-        
-        if (firstUnfinished !== -1) {
-            let secondUnfinished = firstUnfinished + 1;
-            while (secondUnfinished < timeSlots.length) {
-                const slot = timeSlots[secondUnfinished];
-                let isCompleted = true;
-                for (const id of slot.matchIds) {
-                    const match = matchData[id];
-                    if (match && match.score !== 'Freilos' && !match.winner) {
-                        isCompleted = false;
-                        break;
-                    }
-                }
-                if (!isCompleted) break;
-                secondUnfinished++;
-            }
-            if (secondUnfinished >= timeSlots.length) secondUnfinished = firstUnfinished;
-            setActiveIndices([firstUnfinished, Math.min(secondUnfinished, timeSlots.length - 1)]);
-        } else {
-            const last = Math.max(0, timeSlots.length - 1);
-            setActiveIndices([Math.max(0, last - 1), last]);
-        }
+        setCurrentSlotIndex(foundIndex !== -1 ? foundIndex : Math.max(0, timeSlots.length - 1));
     };
     
-    findActiveSlots();
+    updateCurrentSlot();
+    const interval = setInterval(updateCurrentSlot, 10000); 
+    return () => clearInterval(interval);
   }, [timeSlots, matchData]);
 
   if (!timeSlots || timeSlots.length === 0) {
@@ -780,8 +718,8 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
       );
   }
 
-  const slot1 = timeSlots[activeIndices[0]];
-  const slot2 = timeSlots[activeIndices[1]];
+  const currentSlot = timeSlots[currentSlotIndex];
+  const nextSlot = timeSlots.length > currentSlotIndex + 1 ? timeSlots[currentSlotIndex + 1] : null;
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans relative overflow-hidden w-full">
@@ -794,6 +732,10 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                 </div>
             </div>
             <div className="flex items-center gap-4 md:gap-6">
+                <div className="text-right hidden sm:block">
+                    <div className="text-2xl md:text-3xl font-bold font-mono">{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                    <div className="text-xs md:text-sm text-slate-400 font-medium">Aktuelle Uhrzeit</div>
+                </div>
                 <button onClick={onExit} className="p-2 md:p-3 rounded-full hover:bg-slate-700 text-slate-400 transition-colors" title="Monitoransicht beenden & Ausloggen">
                     <X size={24} />
                 </button>
@@ -808,14 +750,14 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
         <div className="flex-1 p-4 md:p-8 flex flex-col gap-8 overflow-y-auto pb-32 w-full text-center">
             {monitorTab === 'live' ? (
                 <>
-                    {slot1 && (
+                    {currentSlot && (
                         <section className="bg-slate-800 rounded-2xl p-4 md:p-6 shadow-2xl border border-teal-900/50 w-full text-left">
                             <h2 className="text-xl md:text-2xl font-bold mb-6 flex items-center gap-3 text-white">
                                 <span className="bg-teal-500 text-white px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm">Aktuell</span>
-                                <Clock className="text-teal-400" /> {slot1.time} - {slot1.endTime} Uhr
+                                <Clock className="text-teal-400" /> {currentSlot.time} - {currentSlot.endTime} Uhr
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-                                {slot1.matchIds.map(id => {
+                                {currentSlot.matchIds.map(id => {
                                     const match = matchData[id];
                                     if (!match) return null;
                                     return <MonitorMatchCard key={id} match={match} />
@@ -824,14 +766,14 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                         </section>
                     )}
 
-                    {slot2 && (
+                    {nextSlot && (
                         <section className="bg-slate-800/50 rounded-2xl p-4 md:p-6 border border-slate-700 w-full text-left">
                             <h2 className="text-lg md:text-xl font-bold mb-6 flex items-center gap-3 text-slate-300">
                                 <span className="bg-slate-700 text-slate-300 px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm">Als nächstes</span>
-                                <Clock className="text-slate-400" /> {slot2.time} - {slot2.endTime} Uhr
+                                <Clock className="text-slate-400" /> {nextSlot.time} - {nextSlot.endTime} Uhr
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 opacity-80">
-                                {slot2.matchIds.map(id => {
+                                {nextSlot.matchIds.map(id => {
                                     const match = matchData[id];
                                     if (!match) return null;
                                     return <MonitorMatchCard key={id} match={match} />
@@ -848,7 +790,7 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
         </div>
 
         <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 bg-white p-3 md:p-4 rounded-xl shadow-2xl flex flex-col items-center gap-2 border-4 border-slate-800">
-            <SimpleQRCode value={currentUrl} size={100} />
+            <img src="adobe-express-qr-code (3).png" alt="QR Code" className="w-[100px] h-[100px] object-contain rounded bg-white p-1" />
             <span className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-wider">Plan auf dem Handy</span>
         </div>
     </div>
@@ -945,6 +887,10 @@ function LoginScreen({ onLogin, onMonitor }) {
                     <p className="text-center text-xs text-slate-400 mt-3">Ideal für Smartphones oder den TV im Vereinsheim.</p>
                 </div>
             </div>
+            
+            <div className="mt-8 text-center text-xs text-slate-400">
+                Standardpasswort: tcw2026
+            </div>
         </div>
     );
 }
@@ -989,12 +935,12 @@ export default function App() {
   const [groupCounts, setGroupCounts] = useState({});
 
   const [startTime, setStartTime] = useState('09:00');
-  const [numCourts, setNumCourts] = useState(6);
+  const [numCourts, setNumCourts] = useState(6); // Default 6
   const [matchDuration, setMatchDuration] = useState(30);
   const [breakDuration, setBreakDuration] = useState(10);
   const [finalDuration, setFinalDuration] = useState(90);
   
-  const [scheduleAllFinalsAtEnd, setScheduleAllFinalsAtEnd] = useState(true);
+  const [scheduleAllFinalsAtEnd, setScheduleAllFinalsAtEnd] = useState(true); // Default true
   
   const [participants, setParticipants] = useState(() => {
     const initial = {};
@@ -1008,7 +954,6 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   
   const fileInputRef = useRef(null);
-  const appFileInputRef = useRef(null);
   const currentUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?mode=monitor` : '';
 
   useEffect(() => {
@@ -1192,34 +1137,6 @@ export default function App() {
           });
           setRawAppInput('');
       }
-  };
-
-  const handleExportApplications = () => {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(applications, null, 2));
-      const downloadAnchorNode = document.createElement('a');
-      downloadAnchorNode.setAttribute("href", dataStr);
-      downloadAnchorNode.setAttribute("download", "anmeldungen_tc_wannweil.json");
-      document.body.appendChild(downloadAnchorNode);
-      downloadAnchorNode.click();
-      downloadAnchorNode.remove();
-  };
-
-  const handleImportApplications = (event) => {
-      const file = event.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-          try {
-              const loaded = JSON.parse(e.target.result);
-              if (loaded && typeof loaded === 'object') {
-                  setApplications(prev => ({ ...prev, ...loaded }));
-              }
-          } catch (err) {
-              console.error("Fehler beim Importieren der Anmeldungen:", err);
-          }
-          event.target.value = '';
-      };
-      reader.readAsText(file);
   };
 
   const transferToParticipants = () => {
@@ -1752,19 +1669,10 @@ export default function App() {
                     <p>Wenn ein Spieler erneut eingefügt wird (gleicher Name), werden seine neuen Kategorien und Partner hinzugefügt.</p>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <input type="file" accept=".json" ref={appFileInputRef} onChange={handleImportApplications} className="hidden" />
-                  <button onClick={() => appFileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-teal-200" title="Anmeldungen importieren (.json)">
-                    <Upload size={16} /> Importieren
-                  </button>
-                  <button onClick={handleExportApplications} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-teal-200" title="Anmeldungen exportieren (.json)">
-                    <Download size={16} /> Exportieren
-                  </button>
-                </div>
               </div>
 
               <div className="flex flex-col md:flex-row gap-8 w-full">
+                 {/* Linke Seite: Eingabe */}
                  <div className="w-full md:w-1/3 flex flex-col gap-3">
                     <label className="text-sm font-bold text-slate-700">Neue Anmeldung einfügen:</label>
                     <textarea 
@@ -1778,6 +1686,7 @@ export default function App() {
                     </button>
                  </div>
                  
+                 {/* Rechte Seite: Liste */}
                  <div className="w-full md:w-2/3 flex flex-col gap-3">
                     <div className="flex justify-between items-end mb-1">
                         <label className="text-sm font-bold text-slate-700">Erfasste Spieler ({Object.keys(applications).length})</label>
@@ -1979,6 +1888,7 @@ export default function App() {
           </div>
         )}
 
+        {}
         {activeTab === 'settings' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 w-full">
@@ -2029,6 +1939,7 @@ export default function App() {
           </div>
         )}
 
+        {}
         {activeTab === 'schedule' && timeSlots && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
             <div className="flex justify-between items-center mb-6 print:hidden w-full">
@@ -2110,6 +2021,7 @@ export default function App() {
           </div>
         )}
 
+        {}
         {activeTab === 'brackets' && tournamentStructures && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
             <div className="flex justify-between items-center mb-6 print:hidden w-full">
