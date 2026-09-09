@@ -21,13 +21,14 @@ const db = getFirestore(app);
 const appId = 'tc-wannweil-2026';
 
 const DEFAULT_CATEGORIES = [
-  "Herren-Einzel-U60",
-  "Herren-Einzel-Ü60",
-  "Herren-Doppel-U60",
-  "Herren-Doppel-Ü60",
-  "Damen-Einzel",
-  "Damen-Doppel",
-  "Doppel-Mix"
+    "Kids-Einzel",
+    "Damen-Einzel",
+    "Herren-Einzel U60",
+    "Herren-Einzel Ü60",
+    "Damen-Doppel",
+    "Herren-Doppel U60",
+    "Herren-Doppel Ü60",
+    "Mixed"
 ];
 
 const FIRST_NAMES_M = ["Lukas", "Maximilian", "Tim", "Paul", "Leon", "Jonas", "Finn", "Elias", "Luis", "Julian", "Tom", "Felix"];
@@ -1108,7 +1109,7 @@ export default function App() {
   const [editingCategory, setEditingCategory] = useState(null);
   const [editCategoryName, setEditCategoryName] = useState('');
   
-  const [grandFinals, setGrandFinals] = useState(["Herren-Einzel-U60"]);
+  const [grandFinals, setGrandFinals] = useState(["Herren-Einzel U60"]);
   const [kinderCategories, setKinderCategories] = useState([]);
   const [kinderCourts, setKinderCourts] = useState({});
   const [kinderShortFinals, setKinderShortFinals] = useState({});
@@ -1283,24 +1284,39 @@ export default function App() {
               data.tel = line.replace(/Tel\.?:/, '').trim();
           } 
           else if (line === 'Teilnahme an:') {
-              let cat = lines[i+1];
-              if (cat) {
-                  if (cat.toLowerCase() === 'mixed') cat = 'Doppel-Mix';
-                  currentCategory = cat;
-                  if (!data.entries[cat]) data.entries[cat] = {};
+              // Read all subsequent lines as categories until a new key (colon) is found
+              let j = i + 1;
+              while (j < lines.length && !lines[j].includes(':') && lines[j] !== 'SpielerIn' && lines[j] !== 'Name') {
+                  const catLine = lines[j].trim();
+                  if (catLine) {
+                      const catList = catLine.split(',').map(c => c.trim()).filter(Boolean);
+                      catList.forEach(c => {
+                          let finalCat = c;
+                          if (finalCat.toLowerCase() === 'doppel-mix' || finalCat.toLowerCase() === 'doppel mix') finalCat = 'Mixed';
+                          currentCategory = finalCat;
+                          if (!data.entries[finalCat]) data.entries[finalCat] = {};
+                      });
+                  }
+                  j++;
               }
           } 
           else if (line === 'Doppel-PartnerIn:' || line === 'Doppel-Partner:') {
               let partner = lines[i+1];
-              if (partner && partner !== 'N/A' && currentCategory) {
-                  data.entries[currentCategory].partner = partner;
+              if (partner && partner !== 'N/A' && !partner.includes('N/A')) {
+                  // Assign to a Doppel category if one exists, otherwise to currentCategory
+                  let doppelCat = Object.keys(data.entries).find(c => c.toLowerCase().includes('doppel'));
+                  if (doppelCat) {
+                      data.entries[doppelCat].partner = partner;
+                  } else if (currentCategory) {
+                      data.entries[currentCategory].partner = partner;
+                  }
               }
           } 
           else if (line === 'Mixed-PartnerIn:' || line === 'Mixed-Partner:') {
               let partner = lines[i+1];
-              if (partner && partner !== 'N/A') {
-                  if (!data.entries['Doppel-Mix']) data.entries['Doppel-Mix'] = {};
-                  data.entries['Doppel-Mix'].partner = partner;
+              if (partner && partner !== 'N/A' && !partner.includes('N/A')) {
+                  if (!data.entries['Mixed']) data.entries['Mixed'] = {};
+                  data.entries['Mixed'].partner = partner;
               }
           }
       }
@@ -1351,31 +1367,100 @@ export default function App() {
 
   const transferToParticipants = () => {
       let newParticipants = { ...participants };
+      let newCategories = [...categories];
       
-      categories.forEach(cat => {
+      // Helper for robust matching
+      const normalizeCat = (c) => c.toLowerCase().replace(/[^a-z0-9öäüß]/g, '');
+      
+      // 1. Scan applications for new categories
+      const appsCategories = new Set();
+      Object.values(applications).forEach(app => {
+          Object.keys(app.entries || {}).forEach(c => appsCategories.add(c));
+      });
+      
+      // 2. Add any category that doesn't exist yet
+      appsCategories.forEach(appCat => {
+          const normalizedAppCat = normalizeCat(appCat);
+          const exists = newCategories.some(existingCat => {
+              const normExisting = normalizeCat(existingCat);
+              return normExisting === normalizedAppCat || (normalizedAppCat === 'doppelmix' && normExisting === 'mixed') || (normalizedAppCat === 'mixed' && normExisting === 'mixed');
+          });
+          
+          if (!exists) {
+              let newCatName = appCat;
+              if (normalizedAppCat === 'doppelmix') newCatName = 'Mixed';
+              
+              newCategories.push(newCatName);
+              if (newParticipants[newCatName] === undefined) {
+                  newParticipants[newCatName] = '';
+              }
+          }
+      });
+
+      // Update Categories State if we found new ones
+      if (newCategories.length > categories.length) {
+          setCategories(newCategories);
+      }
+      
+      // 3. Process all categories (old and new)
+      newCategories.forEach(cat => {
           let pairs = new Set();
           let generatedNames = [];
           
+          const normalizedTargetCat = normalizeCat(cat);
+          
           Object.values(applications).forEach(app => {
-              if (app.entries && app.entries[cat]) {
+              // Find matching category in user application (ignoring hyphens/spaces)
+              let entryKey = Object.keys(app.entries || {}).find(k => {
+                  const normK = normalizeCat(k);
+                  return normK === normalizedTargetCat || (normK === 'doppelmix' && normalizedTargetCat === 'mixed') || (normK === 'mixed' && normalizedTargetCat === 'mixed');
+              });
+
+              if (entryKey) {
                   const isDouble = cat.toLowerCase().includes('doppel') || cat.toLowerCase().includes('mix');
-                  let partner = app.entries[cat].partner;
+                  let partner = app.entries[entryKey].partner;
                   
-                  if (isDouble && partner && partner !== 'N/A' && partner.trim() !== '') {
-                      let pairKey = [app.name.trim(), partner.trim()].sort().join(' / ');
+                  if (isDouble && partner && partner !== 'N/A' && !partner.includes('N/A') && partner.trim() !== '') {
+                      let p1Raw = app.name.trim();
+                      let p2Raw = partner.trim();
+                      
+                      // Remove (m), (f), (k) or (w) tags
+                      let p1Clean = p1Raw.replace(/\s*\([mfkw]\)/gi, '').trim();
+                      let p2Clean = p2Raw.replace(/\s*\([mfkw]\)/gi, '').trim();
+                      
+                      let pairKey;
+                      if (normalizedTargetCat === 'mixed' || normalizedTargetCat === 'doppelmix') {
+                          // Check for female indicator or fallback to female first names
+                          let p1Female = /\([fw]\)/i.test(p1Raw) || FIRST_NAMES_F.includes(p1Clean.split(' ')[0]);
+                          let p2Female = /\([fw]\)/i.test(p2Raw) || FIRST_NAMES_F.includes(p2Clean.split(' ')[0]);
+                          
+                          if (p2Female && !p1Female) {
+                              pairKey = `${p2Clean} / ${p1Clean}`; // Female first
+                          } else if (p1Female && !p2Female) {
+                              pairKey = `${p1Clean} / ${p2Clean}`; // Female first
+                          } else {
+                              pairKey = [p1Clean, p2Clean].sort().join(' / ');
+                          }
+                      } else {
+                          pairKey = [p1Clean, p2Clean].sort().join(' / ');
+                      }
+
                       if (!pairs.has(pairKey)) {
                           pairs.add(pairKey);
                           generatedNames.push(pairKey);
                       }
                   } else {
-                      generatedNames.push(app.name.trim());
+                      // Single player: just strip the gender tag
+                      generatedNames.push(app.name.replace(/\s*\([mfkw]\)/gi, '').trim());
                   }
               }
           });
           
           if (generatedNames.length > 0) {
                const existingLines = (newParticipants[cat] || '').split('\n').map(l => l.trim()).filter(l=>l);
+               const existingNames = new Set(existingLines.map(l => l.split(',')[0].trim()));
                const lkMap = {};
+               
                existingLines.forEach(l => {
                    const parts = l.split(',');
                    if(parts.length > 1) {
@@ -1383,12 +1468,19 @@ export default function App() {
                    }
                });
 
-               const mergedLines = generatedNames.map(name => {
-                   if (lkMap[name]) return `${name}, ${lkMap[name]}`;
-                   return name;
+               // Keep existing manual entries!
+               let finalLines = [...existingLines];
+
+               generatedNames.forEach(name => {
+                   const reversed = name.includes(' / ') ? name.split(' / ').reverse().join(' / ') : name;
+                   
+                   // Avoid adding duplicate players/teams
+                   if (!existingNames.has(name) && !existingNames.has(reversed)) {
+                       finalLines.push(name);
+                   }
                });
                
-               newParticipants[cat] = mergedLines.join('\n');
+               newParticipants[cat] = finalLines.join('\n');
           }
       });
       
