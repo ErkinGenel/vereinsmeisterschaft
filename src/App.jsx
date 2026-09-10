@@ -1390,6 +1390,10 @@ export default function App() {
               data.tel = line.replace(/Tel\.?:/, '').trim();
           } 
           else if (line === 'Teilnahme an:') {
+<<<<<<< HEAD
+=======
+              // Read all subsequent lines as categories until a new key (colon) is found
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
               let j = i + 1;
               while (j < lines.length && !lines[j].includes(':') && lines[j] !== 'SpielerIn' && lines[j] !== 'Name') {
                   const catLine = lines[j].trim();
@@ -1408,6 +1412,10 @@ export default function App() {
           else if (line === 'Doppel-PartnerIn:' || line === 'Doppel-Partner:') {
               let partner = lines[i+1];
               if (partner && partner !== 'N/A' && !partner.includes('N/A')) {
+<<<<<<< HEAD
+=======
+                  // Assign to a Doppel category if one exists, otherwise to currentCategory
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                   let doppelCat = Object.keys(data.entries).find(c => c.toLowerCase().includes('doppel'));
                   if (doppelCat) {
                       data.entries[doppelCat].partner = partner;
@@ -1473,13 +1481,24 @@ export default function App() {
       let newParticipants = { ...participants };
       let newCategories = [...categories];
       
+<<<<<<< HEAD
       const normalizeCat = (c) => c.toLowerCase().replace(/[^a-z0-9öäüß]/g, '');
       
+=======
+      // Helper for robust matching
+      const normalizeCat = (c) => c.toLowerCase().replace(/[^a-z0-9öäüß]/g, '');
+      
+      // 1. Scan applications for new categories
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
       const appsCategories = new Set();
       Object.values(applications).forEach(app => {
           Object.keys(app.entries || {}).forEach(c => appsCategories.add(c));
       });
       
+<<<<<<< HEAD
+=======
+      // 2. Add any category that doesn't exist yet
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
       appsCategories.forEach(appCat => {
           const normalizedAppCat = normalizeCat(appCat);
           const exists = newCategories.some(existingCat => {
@@ -1498,16 +1517,30 @@ export default function App() {
           }
       });
 
+<<<<<<< HEAD
+=======
+      // Update Categories State if we found new ones
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
       if (newCategories.length > categories.length) {
           setCategories(newCategories);
       }
       
+<<<<<<< HEAD
+=======
+      // 3. Process all categories (old and new)
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
       newCategories.forEach(cat => {
           let pairs = new Set();
           let generatedNames = [];
           const normalizedTargetCat = normalizeCat(cat);
           
+          const normalizedTargetCat = normalizeCat(cat);
+          
           Object.values(applications).forEach(app => {
+<<<<<<< HEAD
+=======
+              // Find matching category in user application (ignoring hyphens/spaces)
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
               let entryKey = Object.keys(app.entries || {}).find(k => {
                   const normK = normalizeCat(k);
                   return normK === normalizedTargetCat || (normK === 'doppelmix' && normalizedTargetCat === 'mixed') || (normK === 'mixed' && normalizedTargetCat === 'mixed');
@@ -1521,18 +1554,32 @@ export default function App() {
                       let p1Raw = app.name.trim();
                       let p2Raw = partner.trim();
                       
+<<<<<<< HEAD
+=======
+                      // Remove (m), (f), (k) or (w) tags
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                       let p1Clean = p1Raw.replace(/\s*\([mfkw]\)/gi, '').trim();
                       let p2Clean = p2Raw.replace(/\s*\([mfkw]\)/gi, '').trim();
                       
                       let pairKey;
                       if (normalizedTargetCat === 'mixed' || normalizedTargetCat === 'doppelmix') {
+<<<<<<< HEAD
+=======
+                          // Check for female indicator or fallback to female first names
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                           let p1Female = /\([fw]\)/i.test(p1Raw) || FIRST_NAMES_F.includes(p1Clean.split(' ')[0]);
                           let p2Female = /\([fw]\)/i.test(p2Raw) || FIRST_NAMES_F.includes(p2Clean.split(' ')[0]);
                           
                           if (p2Female && !p1Female) {
+<<<<<<< HEAD
                               pairKey = `${p2Clean} / ${p1Clean}`; 
                           } else if (p1Female && !p2Female) {
                               pairKey = `${p1Clean} / ${p2Clean}`; 
+=======
+                              pairKey = `${p2Clean} / ${p1Clean}`; // Female first
+                          } else if (p1Female && !p2Female) {
+                              pairKey = `${p1Clean} / ${p2Clean}`; // Female first
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                           } else {
                               pairKey = [p1Clean, p2Clean].sort().join(' / ');
                           }
@@ -1545,6 +1592,10 @@ export default function App() {
                           generatedNames.push(pairKey);
                       }
                   } else {
+<<<<<<< HEAD
+=======
+                      // Single player: just strip the gender tag
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                       generatedNames.push(app.name.replace(/\s*\([mfkw]\)/gi, '').trim());
                   }
               }
@@ -1562,11 +1613,19 @@ export default function App() {
                    }
                });
 
+<<<<<<< HEAD
+=======
+               // Keep existing manual entries!
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                let finalLines = [...existingLines];
 
                generatedNames.forEach(name => {
                    const reversed = name.includes(' / ') ? name.split(' / ').reverse().join(' / ') : name;
                    
+<<<<<<< HEAD
+=======
+                   // Avoid adding duplicate players/teams
+>>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                    if (!existingNames.has(name) && !existingNames.has(reversed)) {
                        finalLines.push(name);
                    }
