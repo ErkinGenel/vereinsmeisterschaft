@@ -4,7 +4,6 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyA_jvqZQT8dR39ofvCn63j_v66z4VjhmoY",
   authDomain: "vereinsmeisterschaft2026.firebaseapp.com",
@@ -14,20 +13,20 @@ const firebaseConfig = {
   appId: "1:729427412928:web:3147486e27718bcbc36a25"
 };
 
-// Initialize Firebase safely (prevents hot-reload crashes causing white screens)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'tc-wannweil-2026';
 
 const DEFAULT_CATEGORIES = [
-  "Herren-Einzel-U60",
-  "Herren-Einzel-Ü60",
-  "Herren-Doppel-U60",
-  "Herren-Doppel-Ü60",
-  "Damen-Einzel",
-  "Damen-Doppel",
-  "Doppel-Mix"
+    "Kids-Einzel",
+    "Damen-Einzel",
+    "Herren-Einzel U60",
+    "Herren-Einzel Ü60",
+    "Damen-Doppel",
+    "Herren-Doppel U60",
+    "Herren-Doppel Ü60",
+    "Mixed"
 ];
 
 const FIRST_NAMES_M = ["Lukas", "Maximilian", "Tim", "Paul", "Leon", "Jonas", "Finn", "Elias", "Luis", "Julian", "Tom", "Felix"];
@@ -501,10 +500,41 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
     return combinedSlots;
 };
 
-function BracketsView({ categories, tournamentStructures, matchData }) {
+function BracketsView({ categories, tournamentStructures, matchData, highlightPlayer }) {
+    const isHighlighted = (name) => {
+        if (!highlightPlayer || !name) return false;
+        return name.toLowerCase().includes(highlightPlayer.toLowerCase());
+    };
+
+    const displayCategories = React.useMemo(() => {
+        if (!highlightPlayer) return categories;
+        return categories.filter(cat => {
+            const catMatches = Object.values(matchData).filter(m => m.category === cat);
+            return catMatches.some(m => isHighlighted(m.player1) || isHighlighted(m.player2));
+        });
+    }, [categories, matchData, highlightPlayer]);
+
+    const getPlayerClass = (m, pKey) => {
+        const baseClass = "break-words p-1 rounded transition-colors";
+        const isWinner = m.winner === m[pKey] && m.score !== 'Freilos';
+        const highlighted = isHighlighted(m[pKey]);
+        
+        if (highlighted) return `${baseClass} bg-amber-300 text-amber-900 font-black shadow-sm ring-1 ring-amber-500`;
+        if (isWinner) return `${baseClass} bg-teal-50 font-bold text-teal-700 print:bg-transparent`;
+        return baseClass;
+    };
+
+    const getStandingPlayerClass = (name) => {
+        return isHighlighted(name) ? 'bg-amber-200 font-bold text-amber-900 rounded px-1' : 'font-medium';
+    };
+
+    if (displayCategories.length === 0 && highlightPlayer) {
+         return <div className="text-center p-12 text-slate-500 font-medium">Keine Ergebnisse oder Turnierbäume für "{highlightPlayer}" gefunden.</div>;
+    }
+
     return (
         <div className="space-y-8 pb-20 w-full">
-            {categories.map((cat, index) => {
+            {displayCategories.map((cat, index) => {
             const data = tournamentStructures[cat];
             if (!data) return null;
             
@@ -529,9 +559,9 @@ function BracketsView({ categories, tournamentStructures, matchData }) {
                                     {mInRound.map(m => (
                                         <div key={m.id} className={`bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10 ${m.score === 'Freilos' ? 'opacity-50 print:opacity-100 print:border-dashed' : ''}`}>
                                             <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">{m.name}</div>
-                                            <div className={`break-words p-1 rounded ${m.winner === m.player1 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player1}</div>
+                                            <div className={getPlayerClass(m, 'player1')}>{m.player1}</div>
                                             <div className="border-t border-slate-100 my-1"></div>
-                                            <div className={`break-words p-1 rounded ${m.winner === m.player2 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player2}</div>
+                                            <div className={getPlayerClass(m, 'player2')}>{m.player2}</div>
                                         </div>
                                     ))}
                                 </div>
@@ -542,9 +572,9 @@ function BracketsView({ categories, tournamentStructures, matchData }) {
                             <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl ml-4 print:bg-transparent print:border-2 text-left">
                                 <div className="text-center text-xs text-amber-600 font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
                                 <div className="bg-white border-2 border-amber-300 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800">
-                                    <div className={`break-words p-1 rounded ${final.winner === final.player1 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player1}</div>
+                                    <div className={getPlayerClass(final, 'player1')}>{final.player1}</div>
                                     <div className="border-t border-slate-100 my-1"></div>
-                                    <div className={`break-words p-1 rounded ${final.winner === final.player2 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player2}</div>
+                                    <div className={getPlayerClass(final, 'player2')}>{final.player2}</div>
                                 </div>
                                 {final.winner && (
                                     <div className="mt-3 text-center">
@@ -582,7 +612,7 @@ function BracketsView({ categories, tournamentStructures, matchData }) {
                                     <ul className="divide-y divide-slate-100 bg-white border-b border-slate-200">
                                     {standings.map((p, pIdx) => (
                                         <li key={pIdx} className="px-4 py-2.5 text-sm text-slate-800 flex justify-between items-center hover:bg-slate-50 transition-colors">
-                                        <span className="font-medium break-words w-1/2 pr-2">{pIdx + 1}. {p.name}</span>
+                                        <span className={`break-words w-1/2 ${getStandingPlayerClass(p.name)}`}>{pIdx + 1}. {p.name}</span>
                                         <div className="flex w-1/2 justify-end gap-3 text-center font-mono">
                                             <span className="w-6 font-bold text-teal-600 bg-teal-50 rounded print:bg-transparent print:text-black">{p.wins}</span>
                                             <span className="w-10 text-slate-500 text-xs flex items-center justify-center">{p.gamesWon}:{p.gamesLost}</span>
@@ -598,10 +628,10 @@ function BracketsView({ categories, tournamentStructures, matchData }) {
                                         <h5 className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider">Gruppenspiele</h5>
                                         <div className="space-y-1.5">
                                             {groupMatchesForTable.map(m => (
-                                                <div key={m.id} className="text-xs flex justify-between items-center bg-white p-1.5 rounded border border-slate-200 shadow-sm print:shadow-none print:border-b-0">
-                                                    <span className={`break-words w-[42%] ${m.winner === m.player1 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'}`}>{m.player1}</span>
+                                                <div key={m.id} className={`text-xs flex justify-between items-center p-1.5 rounded border shadow-sm print:shadow-none print:border-b-0 ${isHighlighted(m.player1) || isHighlighted(m.player2) ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+                                                    <span className={`break-words w-[42%] ${m.winner === m.player1 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'} ${isHighlighted(m.player1) ? 'text-amber-900 font-black' : ''}`}>{m.player1}</span>
                                                     <span className="text-[10px] text-slate-400 font-mono text-center w-1/6 bg-slate-50 rounded px-1 print:bg-transparent print:text-black">{m.score || '-:-'}</span>
-                                                    <span className={`break-words w-[42%] text-right ${m.winner === m.player2 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'}`}>{m.player2}</span>
+                                                    <span className={`break-words w-[42%] text-right ${m.winner === m.player2 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'} ${isHighlighted(m.player2) ? 'text-amber-900 font-black' : ''}`}>{m.player2}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -625,9 +655,9 @@ function BracketsView({ categories, tournamentStructures, matchData }) {
                                         {mInRound.map(m => (
                                             <div key={m.id} className={`bg-white border-2 border-slate-200 p-2 rounded-lg shadow-sm text-sm font-medium text-slate-800 relative z-10 ${m.score === 'Freilos' ? 'opacity-50 print:opacity-100 print:border-dashed' : ''} print:shadow-none`}>
                                                 <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">{m.name}</div>
-                                                <div className={`break-words p-1 rounded ${m.winner === m.player1 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player1}</div>
+                                                <div className={getPlayerClass(m, 'player1')}>{m.player1}</div>
                                                 <div className="border-t border-slate-100 my-1"></div>
-                                                <div className={`break-words p-1 rounded ${m.winner === m.player2 && m.score !== 'Freilos' ? 'bg-teal-50 font-bold text-teal-700 print:bg-transparent' : ''}`}>{m.player2}</div>
+                                                <div className={getPlayerClass(m, 'player2')}>{m.player2}</div>
                                             </div>
                                         ))}
                                     </div>
@@ -642,9 +672,9 @@ function BracketsView({ categories, tournamentStructures, matchData }) {
                                 <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl print:bg-transparent print:border-2 text-left">
                                 <div className="text-center text-xs text-amber-600 font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
                                 <div className="bg-white border-2 border-amber-300 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800 print:shadow-none">
-                                    <div className={`break-words p-1 rounded ${final.winner === final.player1 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player1}</div>
+                                    <div className={getPlayerClass(final, 'player1')}>{final.player1}</div>
                                     <div className="border-t border-slate-100 my-1"></div>
-                                    <div className={`break-words p-1 rounded ${final.winner === final.player2 ? 'bg-amber-100 print:bg-transparent' : ''}`}>{final.player2}</div>
+                                    <div className={getPlayerClass(final, 'player2')}>{final.player2}</div>
                                 </div>
                                 {final.winner && (
                                     <div className="mt-3 text-center">
@@ -665,9 +695,49 @@ function BracketsView({ categories, tournamentStructures, matchData }) {
     );
 }
 
-function MonitorView({ timeSlots, matchData, tournamentStructures, categories, onExit }) {
+function MonitorView({ timeSlots, matchData, tournamentStructures, categories, onExit, currentUrl }) {
   const [activeIndices, setActiveIndices] = useState([0, 1]);
   const [monitorTab, setMonitorTab] = useState('live');
+  const [playerFilter, setPlayerFilter] = useState('');
+
+  const allPlayers = React.useMemo(() => {
+      const players = new Set();
+      Object.values(matchData).forEach(m => {
+          const addPlayer = (p) => {
+              if (!p || p === 'Freilos' || p.includes('Gruppe') || p.includes('Sieger') || p.includes('Platz')) return;
+              players.add(p);
+          };
+          addPlayer(m.player1);
+          addPlayer(m.player2);
+      });
+      return Array.from(players).sort();
+  }, [matchData]);
+
+  const matchTimeMap = React.useMemo(() => {
+      const map = {};
+      if(timeSlots) {
+          timeSlots.forEach(slot => {
+              slot.matchIds.forEach(id => {
+                  map[id] = { time: slot.time, endTime: slot.endTime, slotType: slot.slotType };
+              });
+          });
+      }
+      return map;
+  }, [timeSlots]);
+
+  const filteredMatches = React.useMemo(() => {
+      if (!playerFilter.trim()) return [];
+      const filterLower = playerFilter.toLowerCase();
+      return Object.values(matchData)
+          .filter(m => (m.player1 && m.player1.toLowerCase().includes(filterLower)) ||
+                       (m.player2 && m.player2.toLowerCase().includes(filterLower)))
+          .map(m => ({ ...m, timeInfo: matchTimeMap[m.id] || { time: 'Offen', endTime: '' } }))
+          .sort((a, b) => {
+              const tA = a.timeInfo.time === 'Offen' ? '99:99' : a.timeInfo.time;
+              const tB = b.timeInfo.time === 'Offen' ? '99:99' : b.timeInfo.time;
+              return tA.localeCompare(tB);
+          });
+  }, [matchData, playerFilter, matchTimeMap]);
 
   useEffect(() => {
     if (!timeSlots || timeSlots.length === 0) return;
@@ -754,8 +824,45 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
             <button onClick={() => setMonitorTab('brackets')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'brackets' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700'}`}>Tabellen & Turnierbaum</button>
         </div>
 
+        <div className="xl:hidden px-4 md:px-8 pt-4 pb-2 w-full flex justify-center bg-slate-900 border-b border-slate-800 shadow-inner">
+            <div className="w-full max-w-md relative">
+                <input
+                    type="search"
+                    list="player-list"
+                    placeholder="🔍 Spieler filtern (Zeitplan & Ergebnisse)..."
+                    value={playerFilter}
+                    onChange={(e) => setPlayerFilter(e.target.value)}
+                    className="w-full bg-slate-800 text-white border border-slate-600 rounded-lg py-2.5 pl-4 pr-10 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/50 shadow-inner placeholder-slate-400 text-sm md:text-base"
+                />
+                <datalist id="player-list">
+                    {allPlayers.map((p, i) => <option key={i} value={p} />)}
+                </datalist>
+                {playerFilter && (
+                    <button onClick={() => setPlayerFilter('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1">
+                        <X size={16} />
+                    </button>
+                )}
+            </div>
+        </div>
+
         <div className="flex-1 p-4 md:p-8 flex flex-col gap-8 overflow-y-auto pb-32 w-full text-center">
             {monitorTab === 'live' ? (
+                playerFilter.trim() ? (
+                    <section className="bg-slate-800 rounded-2xl p-4 md:p-6 shadow-2xl border border-teal-900/50 w-full text-left">
+                        <h2 className="text-xl md:text-2xl font-bold mb-6 text-white flex items-center gap-3">
+                            <span className="bg-teal-600 px-3 py-1 rounded-lg text-xs md:text-sm uppercase tracking-wider">Gefiltert</span>
+                            Spiele für "{playerFilter}"
+                        </h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                            {filteredMatches.map(match => (
+                                <MonitorMatchCard key={match.id} match={match} customTime={match.timeInfo?.time && match.timeInfo.time !== 'Offen' ? `${match.timeInfo.time} - ${match.timeInfo.endTime} Uhr` : 'Zeit noch offen'} />
+                            ))}
+                        </div>
+                        {filteredMatches.length === 0 && (
+                            <div className="text-center py-12 text-slate-400 font-medium bg-slate-800/50 rounded-xl border border-slate-700">Keine geplanten Spiele für diesen Suchbegriff gefunden.</div>
+                        )}
+                    </section>
+                ) : (
                 <>
                     {slot1 && (
                         <section className="bg-slate-800 rounded-2xl p-4 md:p-6 shadow-2xl border border-teal-900/50 w-full text-left">
@@ -780,7 +887,7 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                                 <Clock className="text-slate-400" /> {slot2.time || ''} - {slot2.endTime || ''} Uhr
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 opacity-80">
-                                {(slot2.matchIds || []).map(id => {
+                                {slot2.matchIds.map(id => {
                                     const match = matchData[id];
                                     if (!match) return null;
                                     return <MonitorMatchCard key={id} match={match} />
@@ -789,9 +896,10 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                         </section>
                     )}
                 </>
+                )
             ) : (
                 <section className="bg-slate-50 text-slate-900 rounded-2xl p-4 md:p-8 border border-slate-200 w-full shadow-2xl">
-                    <BracketsView categories={categories} tournamentStructures={tournamentStructures} matchData={matchData} />
+                    <BracketsView categories={categories} tournamentStructures={tournamentStructures} matchData={matchData} highlightPlayer={playerFilter} />
                 </section>
             )}
         </div>
@@ -804,16 +912,18 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
   );
 }
 
-function MonitorMatchCard({ match }) {
-    if (!match) return null;
+function MonitorMatchCard({ match, customTime }) {
     const isPlaceholder = (match.player1 || '').includes('Gruppe') || (match.player1 || '').includes('Sieger') || (match.player1 || '').includes('Platz');
     
     return (
         <div className={`rounded-xl p-4 md:p-5 flex flex-col gap-3 h-full border-2 ${match.isFinal ? 'bg-amber-900/20 border-amber-500/50' : 'bg-slate-700/50 border-slate-600'}`}>
             <div className="flex justify-between items-start">
                 <div className="flex flex-col gap-1">
-                    <span className="text-[10px] md:text-xs font-bold text-teal-400 uppercase tracking-wider">{match.category || ''}</span>
-                    <span className="text-xs md:text-sm font-medium text-slate-300">{match.type || ''} {match.name && `- ${match.name}`}</span>
+                    <span className="text-[10px] md:text-xs font-bold text-teal-400 uppercase tracking-wider">{match.category}</span>
+                    <span className="text-xs md:text-sm font-medium text-slate-300">{match.type} {match.name && `- ${match.name}`}</span>
+                    {customTime && (
+                        <span className="text-xs font-bold text-amber-400 mt-1 flex items-center gap-1"><Clock size={12} /> {customTime}</span>
+                    )}
                 </div>
                 <div className="bg-slate-900 text-white font-black text-lg md:text-xl w-8 h-8 md:w-10 md:h-10 rounded-lg flex items-center justify-center shadow-inner shrink-0 ml-2">
                     {match.court || 1}
@@ -1108,7 +1218,7 @@ export default function App() {
   const [editingCategory, setEditingCategory] = useState(null);
   const [editCategoryName, setEditCategoryName] = useState('');
   
-  const [grandFinals, setGrandFinals] = useState(["Herren-Einzel-U60"]);
+  const [grandFinals, setGrandFinals] = useState(["Herren-Einzel U60"]);
   const [kinderCategories, setKinderCategories] = useState([]);
   const [kinderCourts, setKinderCourts] = useState({});
   const [kinderShortFinals, setKinderShortFinals] = useState({});
@@ -1198,7 +1308,6 @@ export default function App() {
       }
   }, [firebaseUser, isFirebaseInitialized]);
 
-  // Real-time synchronization for Monitor & Spielleiter Views
   useEffect(() => {
       if (!firebaseUser || !isFirebaseInitialized) return;
       const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentData', 'main');
@@ -1217,7 +1326,6 @@ export default function App() {
       return () => unsub();
   }, [firebaseUser, viewMode, isFirebaseInitialized]);
 
-  // Master Save Function
   const saveToCloud = async () => {
       if (!firebaseUser) return;
       setIsSavingToCloud(true);
@@ -1249,7 +1357,6 @@ export default function App() {
       setIsSavingToCloud(false);
   };
 
-  // Continuous Auto-Save Trigger for all state changes in management view
   useEffect(() => {
       if (!isFirebaseInitialized || !firebaseUser || viewMode === 'monitor' || viewMode === 'spielleiter') return;
       const timeout = setTimeout(() => {
@@ -1283,24 +1390,37 @@ export default function App() {
               data.tel = line.replace(/Tel\.?:/, '').trim();
           } 
           else if (line === 'Teilnahme an:') {
-              let cat = lines[i+1];
-              if (cat) {
-                  if (cat.toLowerCase() === 'mixed') cat = 'Doppel-Mix';
-                  currentCategory = cat;
-                  if (!data.entries[cat]) data.entries[cat] = {};
+              let j = i + 1;
+              while (j < lines.length && !lines[j].includes(':') && lines[j] !== 'SpielerIn' && lines[j] !== 'Name') {
+                  const catLine = lines[j].trim();
+                  if (catLine) {
+                      const catList = catLine.split(',').map(c => c.trim()).filter(Boolean);
+                      catList.forEach(c => {
+                          let finalCat = c;
+                          if (finalCat.toLowerCase() === 'doppel-mix' || finalCat.toLowerCase() === 'doppel mix') finalCat = 'Mixed';
+                          currentCategory = finalCat;
+                          if (!data.entries[finalCat]) data.entries[finalCat] = {};
+                      });
+                  }
+                  j++;
               }
           } 
           else if (line === 'Doppel-PartnerIn:' || line === 'Doppel-Partner:') {
               let partner = lines[i+1];
-              if (partner && partner !== 'N/A' && currentCategory) {
-                  data.entries[currentCategory].partner = partner;
+              if (partner && partner !== 'N/A' && !partner.includes('N/A')) {
+                  let doppelCat = Object.keys(data.entries).find(c => c.toLowerCase().includes('doppel'));
+                  if (doppelCat) {
+                      data.entries[doppelCat].partner = partner;
+                  } else if (currentCategory) {
+                      data.entries[currentCategory].partner = partner;
+                  }
               }
           } 
           else if (line === 'Mixed-PartnerIn:' || line === 'Mixed-Partner:') {
               let partner = lines[i+1];
-              if (partner && partner !== 'N/A') {
-                  if (!data.entries['Doppel-Mix']) data.entries['Doppel-Mix'] = {};
-                  data.entries['Doppel-Mix'].partner = partner;
+              if (partner && partner !== 'N/A' && !partner.includes('N/A')) {
+                  if (!data.entries['Mixed']) data.entries['Mixed'] = {};
+                  data.entries['Mixed'].partner = partner;
               }
           }
       }
@@ -1342,7 +1462,7 @@ export default function App() {
                   setApplications(prev => ({ ...prev, ...loaded }));
               }
           } catch (err) {
-              console.error("Fehler beim Importieren der Anmeldungen:", err);
+              console.error("Fehler beim Importieren:", err);
           }
           event.target.value = '';
       };
@@ -1351,31 +1471,90 @@ export default function App() {
 
   const transferToParticipants = () => {
       let newParticipants = { ...participants };
+      let newCategories = [...categories];
       
-      categories.forEach(cat => {
+      const normalizeCat = (c) => c.toLowerCase().replace(/[^a-z0-9öäüß]/g, '');
+      
+      const appsCategories = new Set();
+      Object.values(applications).forEach(app => {
+          Object.keys(app.entries || {}).forEach(c => appsCategories.add(c));
+      });
+      
+      appsCategories.forEach(appCat => {
+          const normalizedAppCat = normalizeCat(appCat);
+          const exists = newCategories.some(existingCat => {
+              const normExisting = normalizeCat(existingCat);
+              return normExisting === normalizedAppCat || (normalizedAppCat === 'doppelmix' && normExisting === 'mixed') || (normalizedAppCat === 'mixed' && normExisting === 'mixed');
+          });
+          
+          if (!exists) {
+              let newCatName = appCat;
+              if (normalizedAppCat === 'doppelmix') newCatName = 'Mixed';
+              
+              newCategories.push(newCatName);
+              if (newParticipants[newCatName] === undefined) {
+                  newParticipants[newCatName] = '';
+              }
+          }
+      });
+
+      if (newCategories.length > categories.length) {
+          setCategories(newCategories);
+      }
+      
+      newCategories.forEach(cat => {
           let pairs = new Set();
           let generatedNames = [];
+          const normalizedTargetCat = normalizeCat(cat);
           
           Object.values(applications).forEach(app => {
-              if (app.entries && app.entries[cat]) {
+              let entryKey = Object.keys(app.entries || {}).find(k => {
+                  const normK = normalizeCat(k);
+                  return normK === normalizedTargetCat || (normK === 'doppelmix' && normalizedTargetCat === 'mixed') || (normK === 'mixed' && normalizedTargetCat === 'mixed');
+              });
+
+              if (entryKey) {
                   const isDouble = cat.toLowerCase().includes('doppel') || cat.toLowerCase().includes('mix');
-                  let partner = app.entries[cat].partner;
+                  let partner = app.entries[entryKey].partner;
                   
-                  if (isDouble && partner && partner !== 'N/A' && partner.trim() !== '') {
-                      let pairKey = [app.name.trim(), partner.trim()].sort().join(' / ');
+                  if (isDouble && partner && partner !== 'N/A' && !partner.includes('N/A') && partner.trim() !== '') {
+                      let p1Raw = app.name.trim();
+                      let p2Raw = partner.trim();
+                      
+                      let p1Clean = p1Raw.replace(/\s*\([mfkw]\)/gi, '').trim();
+                      let p2Clean = p2Raw.replace(/\s*\([mfkw]\)/gi, '').trim();
+                      
+                      let pairKey;
+                      if (normalizedTargetCat === 'mixed' || normalizedTargetCat === 'doppelmix') {
+                          let p1Female = /\([fw]\)/i.test(p1Raw) || FIRST_NAMES_F.includes(p1Clean.split(' ')[0]);
+                          let p2Female = /\([fw]\)/i.test(p2Raw) || FIRST_NAMES_F.includes(p2Clean.split(' ')[0]);
+                          
+                          if (p2Female && !p1Female) {
+                              pairKey = `${p2Clean} / ${p1Clean}`; 
+                          } else if (p1Female && !p2Female) {
+                              pairKey = `${p1Clean} / ${p2Clean}`; 
+                          } else {
+                              pairKey = [p1Clean, p2Clean].sort().join(' / ');
+                          }
+                      } else {
+                          pairKey = [p1Clean, p2Clean].sort().join(' / ');
+                      }
+
                       if (!pairs.has(pairKey)) {
                           pairs.add(pairKey);
                           generatedNames.push(pairKey);
                       }
                   } else {
-                      generatedNames.push(app.name.trim());
+                      generatedNames.push(app.name.replace(/\s*\([mfkw]\)/gi, '').trim());
                   }
               }
           });
           
           if (generatedNames.length > 0) {
                const existingLines = (newParticipants[cat] || '').split('\n').map(l => l.trim()).filter(l=>l);
+               const existingNames = new Set(existingLines.map(l => l.split(',')[0].trim()));
                const lkMap = {};
+               
                existingLines.forEach(l => {
                    const parts = l.split(',');
                    if(parts.length > 1) {
@@ -1383,12 +1562,17 @@ export default function App() {
                    }
                });
 
-               const mergedLines = generatedNames.map(name => {
-                   if (lkMap[name]) return `${name}, ${lkMap[name]}`;
-                   return name;
+               let finalLines = [...existingLines];
+
+               generatedNames.forEach(name => {
+                   const reversed = name.includes(' / ') ? name.split(' / ').reverse().join(' / ') : name;
+                   
+                   if (!existingNames.has(name) && !existingNames.has(reversed)) {
+                       finalLines.push(name);
+                   }
                });
                
-               newParticipants[cat] = mergedLines.join('\n');
+               newParticipants[cat] = finalLines.join('\n');
           }
       });
       
@@ -1408,77 +1592,6 @@ export default function App() {
       setGroupCounts(prev => ({ ...prev, [cat]: countStr }));
       setTimeSlots(null); setTournamentStructures(null); setMatchData({});
   };
-
-  if (!isFirebaseInitialized) {
-      return (
-          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-slate-100 w-full relative">
-             <Trophy className="w-16 h-16 text-teal-500 mb-6 animate-pulse" />
-             <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-             <p className="text-lg text-slate-400 font-medium">Lade Turnierdaten aus der Cloud...</p>
-          </div>
-      );
-  }
-
-  if (loginRole === null && viewMode !== 'monitor') {
-      return (
-          <LoginScreen 
-              initialMode={viewMode}
-              onLoginAdmin={() => {
-                  setLoginRole('admin');
-                  setViewMode('manage');
-                  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
-                      window.history.pushState({}, document.title, window.location.origin + window.location.pathname);
-                  }
-              }}
-              onLoginSpielleiter={() => {
-                  setLoginRole('spielleiter');
-                  setViewMode('spielleiter');
-                  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
-                      window.history.pushState({}, document.title, window.location.origin + window.location.pathname + '?mode=spielleiter');
-                  }
-              }} 
-              onMonitor={() => { 
-                  setLoginRole('monitor'); 
-                  setViewMode('monitor'); 
-                  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
-                      window.history.pushState({}, document.title, window.location.origin + window.location.pathname + '?mode=monitor');
-                  }
-              }} 
-          />
-      );
-  }
-
-  if (viewMode === 'monitor') {
-      return <MonitorView 
-          timeSlots={timeSlots} 
-          matchData={matchData} 
-          tournamentStructures={tournamentStructures}
-          categories={categories}
-          onExit={() => { 
-              setLoginRole(null); 
-              setViewMode('manage'); 
-              if (typeof window !== 'undefined' && window.history && window.history.pushState) {
-                  window.history.pushState({}, document.title, window.location.origin + window.location.pathname);
-              }
-          }} 
-      />;
-  }
-
-  if (viewMode === 'spielleiter') {
-      return <SpielleiterView 
-          timeSlots={timeSlots} 
-          matchData={matchData} 
-          onSaveResult={handleUpdateResult}
-          isSavingToCloud={isSavingToCloud}
-          onExit={() => { 
-              setLoginRole(null); 
-              setViewMode('manage'); 
-              if (typeof window !== 'undefined' && window.history && window.history.pushState) {
-                  window.history.pushState({}, document.title, window.location.origin + window.location.pathname);
-              }
-          }} 
-      />;
-  }
 
   const handleAddCategory = () => {
       const name = newCategoryName.trim();
@@ -1612,29 +1725,57 @@ export default function App() {
     return participants[category]?.split('\n').map(p => p.trim()).filter(p => p.length > 0) || [];
   };
 
-  function handleUpdateResult(matchId, score, winner) {
+  const handleUpdateResult = (matchId, score, winner) => {
     setMatchData(prevMatches => {
       let nextMatches = JSON.parse(JSON.stringify(prevMatches));
-      if (nextMatches[matchId]) {
-          nextMatches[matchId].score = score;
-          nextMatches[matchId].winner = winner;
-      }
+      nextMatches[matchId].score = score;
+      nextMatches[matchId].winner = winner;
       
       nextMatches = processTournamentProgressPure(nextMatches, tournamentStructures, categories);
-      setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals));
+      
+      setTimeSlots(prevSlots => {
+          const nextSlots = buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals);
+          
+          // Sofortige und gezielte Speicherung der neuen Ergebnisse in die Cloud!
+          if (firebaseUser && (viewMode === 'spielleiter' || viewMode === 'manage')) {
+              setIsSavingToCloud(true);
+              const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentData', 'main');
+              setDoc(docRef, {
+                  __matchData: nextMatches,
+                  __timeSlots: nextSlots
+              }, { merge: true }) // merge: true stellt sicher, dass wir Admin-Einstellungen nicht löschen
+              .catch(err => console.error("Cloud Save Error (Result):", err))
+              .finally(() => setIsSavingToCloud(false));
+          }
+          
+          return nextSlots;
+      });
       
       return nextMatches;
     });
-  }
+  };
 
   const handleManualTimeChange = (matchId, newTime) => {
     setMatchData(prevMatches => {
         let nextMatches = JSON.parse(JSON.stringify(prevMatches));
-        if (nextMatches[matchId]) {
-            nextMatches[matchId].manualTime = newTime;
-        }
+        nextMatches[matchId].manualTime = newTime;
         
-        setTimeSlots(prevSlots => buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals));
+        setTimeSlots(prevSlots => {
+            const nextSlots = buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals);
+            
+            if (firebaseUser && (viewMode === 'spielleiter' || viewMode === 'manage')) {
+                setIsSavingToCloud(true);
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentData', 'main');
+                setDoc(docRef, {
+                    __matchData: nextMatches,
+                    __timeSlots: nextSlots
+                }, { merge: true })
+                .catch(err => console.error("Cloud Save Error (Time):", err))
+                .finally(() => setIsSavingToCloud(false));
+            }
+
+            return nextSlots;
+        });
         return nextMatches;
     });
   };
@@ -1863,6 +2004,77 @@ export default function App() {
       setActiveTab('schedule');
     }, 800);
   };
+
+  if (!isFirebaseInitialized) {
+      return (
+          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-slate-100 w-full relative">
+             <Trophy className="w-16 h-16 text-teal-500 mb-6 animate-pulse" />
+             <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+             <p className="text-lg text-slate-400 font-medium">Lade Turnierdaten aus der Cloud...</p>
+          </div>
+      );
+  }
+
+  if (loginRole === null && viewMode !== 'monitor') {
+      return (
+          <LoginScreen 
+              initialMode={viewMode}
+              onLoginAdmin={() => {
+                  setLoginRole('admin');
+                  setViewMode('manage');
+                  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+                      window.history.pushState({}, document.title, window.location.origin + window.location.pathname);
+                  }
+              }}
+              onLoginSpielleiter={() => {
+                  setLoginRole('spielleiter');
+                  setViewMode('spielleiter');
+                  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+                      window.history.pushState({}, document.title, window.location.origin + window.location.pathname + '?mode=spielleiter');
+                  }
+              }} 
+              onMonitor={() => { 
+                  setLoginRole('monitor'); 
+                  setViewMode('monitor'); 
+                  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+                      window.history.pushState({}, document.title, window.location.origin + window.location.pathname + '?mode=monitor');
+                  }
+              }} 
+          />
+      );
+  }
+
+  if (viewMode === 'monitor') {
+      return <MonitorView 
+          timeSlots={timeSlots} 
+          matchData={matchData} 
+          tournamentStructures={tournamentStructures}
+          categories={categories}
+          onExit={() => { 
+              setLoginRole(null); 
+              setViewMode('manage'); 
+              if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+                  window.history.pushState({}, document.title, window.location.origin + window.location.pathname);
+              }
+          }} 
+      />;
+  }
+
+  if (viewMode === 'spielleiter') {
+      return <SpielleiterView 
+          timeSlots={timeSlots} 
+          matchData={matchData} 
+          onSaveResult={handleUpdateResult}
+          isSavingToCloud={isSavingToCloud}
+          onExit={() => { 
+              setLoginRole(null); 
+              setViewMode('manage'); 
+              if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+                  window.history.pushState({}, document.title, window.location.origin + window.location.pathname);
+              }
+          }} 
+      />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-teal-200 w-full">
@@ -2219,7 +2431,7 @@ export default function App() {
                     </thead>
                     <tbody>
                         {timeSlots.map(slot => (
-                            slot.matchIds.map(id => {
+                            (slot.matchIds || []).map(id => {
                                 const match = matchData[id];
                                 if (!match) return null;
                                 return (
