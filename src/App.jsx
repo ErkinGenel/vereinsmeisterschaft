@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, Settings, Trophy, Clock, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X, Monitor, LogIn, Lock, Cloud, Inbox, ArrowRight } from 'lucide-react';
+import { Calendar, Users, Settings, Trophy, Clock, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X, Monitor, LogIn, Lock, Cloud, Inbox, ArrowRight, Printer, ChevronLeft, Award, Wand2, Zap, Scale, Target, Activity, Info } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 
+// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyA_jvqZQT8dR39ofvCn63j_v66z4VjhmoY",
   authDomain: "vereinsmeisterschaft2026.firebaseapp.com",
@@ -13,24 +14,25 @@ const firebaseConfig = {
   appId: "1:729427412928:web:3147486e27718bcbc36a25"
 };
 
+// Initialize Firebase safely
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'tc-wannweil-2026';
 
 const DEFAULT_CATEGORIES = [
-    "Kids-Einzel",
-    "Damen-Einzel",
-    "Herren-Einzel U60",
-    "Herren-Einzel Ü60",
-    "Damen-Doppel",
-    "Herren-Doppel U60",
-    "Herren-Doppel Ü60",
-    "Mixed"
+  "Kids-Einzel",
+  "Damen-Einzel",
+  "Herren-Einzel U60",
+  "Herren-Einzel Ü60",
+  "Damen-Doppel",
+  "Herren-Doppel U60",
+  "Herren-Doppel Ü60",
+  "Mixed"
 ];
 
 const FIRST_NAMES_M = ["Lukas", "Maximilian", "Tim", "Paul", "Leon", "Jonas", "Finn", "Elias", "Luis", "Julian", "Tom", "Felix"];
-const FIRST_NAMES_F = ["Mia", "Emma", "Hannah", "Sofia", "Anna", "Lea", "Emilia", "Marie", "Lena", "Amelie", "Laura", "Sarah"];
+const FIRST_NAMES_F = ["Mia", "Emma", "Hannah", "Sofia", "Anna", "Lea", "Emilia", "Marie", "Lena", "Amelie", "Laura", "Sarah", "Sylvia", "Carolin", "Karin", "Birgit"];
 const LAST_NAMES = ["Müller", "Schmidt", "Schneider", "Fischer", "Weber", "Meyer", "Wagner", "Becker", "Hoffmann", "Schäfer", "Koch", "Bauer", "Richter", "Klein", "Wolf"];
 
 const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -58,6 +60,8 @@ const getKnockoutSeeds = (size) => {
 const getRoundName = (rs) => rs === 4 ? 'VF' : (rs === 2 ? 'HF' : (rs === 8 ? 'AF' : `R${rs*2}`));
 
 const calculateStandings = (groupName, structure, catMatches) => {
+    if (!structure || !structure.groups || !structure.groups[groupName]) return [];
+    
     const groupMatches = catMatches.filter(m => m.stage === 'group' && m.groupName === groupName);
     const players = structure.groups[groupName].map(name => ({ name, wins: 0, gamesWon: 0, gamesLost: 0, diff: 0, matches: 0 }));
     
@@ -107,7 +111,6 @@ const processTournamentProgressPure = (currentMatches, structures, activeCategor
 
         const catMatches = Object.values(updated).filter(m => m.category === cat);
         const groupMatches = catMatches.filter(m => m.stage === 'group');
-        
         const groupsDone = groupMatches.length > 0 && groupMatches.every(m => m.winner);
         
         const standings = {};
@@ -252,8 +255,8 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
     let lockedPlacement = {}; 
     if (currentSlots) {
         currentSlots.forEach((slot, idx) => {
-            slot.matchIds.forEach(id => {
-                if (finishedIds.has(id) && matches[id].score !== 'Freilos' && !matches[id].manualTime) {
+            (slot.matchIds || []).forEach(id => {
+                if (finishedIds.has(id) && matches[id] && matches[id].score !== 'Freilos' && !matches[id].manualTime) {
                     lockedPlacement[id] = idx;
                 }
             });
@@ -280,7 +283,7 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
         if (courtIdx !== -1) {
             slot.courts[courtIdx] = id;
             if (match && match.score !== 'Freilos') {
-                match.conflictPlayers.forEach(p => slot.activePlayers.add(p));
+                (match.conflictPlayers || []).forEach(p => slot.activePlayers.add(p));
             }
         }
         matchEndSlot[id] = sIdx + 1;
@@ -343,7 +346,7 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
                 
                 const isKinder = kinderCategories.includes(m.category);
 
-                if (!m.conflictPlayers.some(p => slot.activePlayers.has(p))) {
+                if (!(m.conflictPlayers || []).some(p => slot.activePlayers.has(p))) {
                     let assignedCourt = -1;
                     
                     if (isKinder) {
@@ -378,7 +381,7 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
 
                     if (assignedCourt !== -1) {
                         slot.courts[assignedCourt] = m.id;
-                        m.conflictPlayers.forEach(p => slot.activePlayers.add(p));
+                        (m.conflictPlayers || []).forEach(p => slot.activePlayers.add(p));
                         matchEndSlot[m.id] = currentSlotIdx + 1;
                         pendingPhase1 = pendingPhase1.filter(x => x.id !== m.id);
                     }
@@ -417,7 +420,7 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
                 
                 const isKinder = kinderCategories.includes(m.category);
 
-                if (!m.conflictPlayers.some(p => slot.activePlayers.has(p))) {
+                if (!(m.conflictPlayers || []).some(p => slot.activePlayers.has(p))) {
                     let assignedCourt = -1;
                     if (isKinder) {
                         let targetCourt = kinderCourts[m.category] ?? 0;
@@ -449,7 +452,7 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
 
                     if (assignedCourt !== -1) {
                         slot.courts[assignedCourt] = m.id;
-                        m.conflictPlayers.forEach(p => slot.activePlayers.add(p));
+                        (m.conflictPlayers || []).forEach(p => slot.activePlayers.add(p));
                         matchEndSlot[m.id] = currentSlotIdx + 1;
                         pendingPhase2 = pendingPhase2.filter(x => x.id !== m.id);
                     }
@@ -467,6 +470,7 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
         slot.courts.forEach((id, idx) => {
             if(id && matches[id]) matches[id].court = idx + 1;
         });
+        if (slot.activePlayers) delete slot.activePlayers; // CRITICAL: Fixes Firebase error on Set()
     });
 
     finalSlots = applyTimesToSlots(finalSlots, matches, startTime, matchDuration, breakDuration, finalDuration, kinderShortFinals);
@@ -492,13 +496,133 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
     combinedSlots.sort((a, b) => parseTime(a.time) - parseTime(b.time));
     combinedSlots.forEach((slot, idx) => {
         slot.slotIndex = idx;
-        if (slot.activePlayers) {
-            delete slot.activePlayers;
-        }
+        if (slot.activePlayers) delete slot.activePlayers;
     });
 
     return combinedSlots;
 };
+
+function CertificatesView({ categories, tournamentStructures, matchData, onClose }) {
+    const getTop2 = (cat) => {
+        const data = tournamentStructures[cat];
+        if (!data) return [];
+        const catMatches = Object.values(matchData).filter(m => m.category === cat);
+        let top2 = [];
+
+        if (data.type === 'knockout') {
+            const finalMatch = catMatches.find(m => m.stage === 'final' && (!m.koRound || m.koRound === 1));
+            if (finalMatch && finalMatch.winner && finalMatch.score !== 'Freilos') {
+                const winner = finalMatch.winner;
+                const loser = finalMatch.winner === finalMatch.player1 ? finalMatch.player2 : finalMatch.player1;
+                top2.push({ name: winner, rank: 1 });
+                top2.push({ name: loser, rank: 2 });
+            }
+        } else {
+            if (data.groups) {
+                const gNames = Object.keys(data.groups);
+                if (gNames.length > 0) {
+                    const gName = gNames[0]; 
+                    const standings = calculateStandings(gName, data, catMatches);
+                    const played = standings.filter(p => p.matches > 0);
+                    if (played.length >= 1) top2.push({ name: played[0].name, rank: 1 });
+                    if (played.length >= 2) top2.push({ name: played[1].name, rank: 2 });
+                }
+            }
+        }
+        return top2;
+    };
+
+    const certificates = [];
+    categories.forEach(cat => {
+        const top2 = getTop2(cat);
+        const isDouble = cat.toLowerCase().includes('doppel') || cat.toLowerCase().includes('mix');
+        const copies = isDouble ? 2 : 1;
+        
+        top2.forEach(player => {
+            for (let i = 0; i < copies; i++) {
+                certificates.push({
+                    category: cat,
+                    rank: player.rank,
+                    name: player.name,
+                    isDouble: isDouble
+                });
+            }
+        });
+    });
+
+    if (certificates.length === 0) {
+       return (
+          <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center">
+             <div className="bg-white p-8 rounded-xl shadow text-center max-w-md">
+                 <Award className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                 <h2 className="text-xl font-bold mb-2">Noch keine Finalisten</h2>
+                 <p className="text-slate-500 mb-6">Es müssen zuerst Endspiele beendet oder Gruppenspiele ausgetragen werden, bevor Urkunden generiert werden können.</p>
+                 <button onClick={onClose} className="bg-black text-white px-6 py-2 rounded font-bold">Zurück zur Verwaltung</button>
+             </div>
+          </div>
+       );
+    }
+
+    return (
+        <div className="bg-slate-200 min-h-screen pb-10 font-sans selection:bg-[#7FB33C]/30">
+            <style>{`
+              @media print {
+                @page { size: A4 portrait; margin: 0; }
+                body { margin: 0; background-color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              }
+            `}</style>
+
+            <div className="bg-black p-4 flex justify-between items-center shadow-md print:hidden sticky top-0 z-50">
+                <button onClick={onClose} className="text-white flex items-center gap-2 hover:text-[#7FB33C] transition-colors text-sm font-bold"><ChevronLeft size={18} /> Zurück</button>
+                <button onClick={() => window.print()} className="bg-[#7FB33C] text-white px-6 py-2 font-bold rounded-lg flex items-center gap-2 shadow-md hover:bg-[#5D7E2B] transition-colors"><Printer size={18} /> Urkunden Drucken</button>
+            </div>
+            
+            <div className="print:m-0 print:p-0 flex flex-col gap-10 print:gap-0 mt-8 print:mt-0">
+                {certificates.map((cert, idx) => (
+                    <div key={idx} className="w-[210mm] h-[296mm] bg-white mx-auto print:m-0 print:shadow-none shadow-xl border-[16px] border-[#7FB33C] flex flex-col relative overflow-hidden" style={{ pageBreakAfter: 'always', boxSizing: 'border-box' }}>
+                        
+                        {/* Background Decor */}
+                        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#7FB33C]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+                        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[#7FB33C]/5 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none"></div>
+                        
+                        {/* Header with Logos */}
+                        <div className="flex justify-between items-start p-16 pb-8 relative z-10">
+                            <img src="TCW-Logo.png" alt="TC Wannweil" className="w-40 h-40 object-contain" onError={(e) => e.target.style.display='none'} />
+                            <img src="50JahreLogo3.jpg" alt="50 Jahre" className="w-40 h-40 object-contain rounded-full border-4 border-white shadow-sm" onError={(e) => e.target.style.display='none'} />
+                        </div>
+
+                        {/* Certificate Content */}
+                        <div className="flex-1 flex flex-col items-center justify-center px-16 text-center relative z-10">
+                            <h1 className="text-7xl font-black text-black uppercase tracking-[0.2em] mb-6" style={{fontFamily: "'Roboto', sans-serif"}}>Urkunde</h1>
+                            <h2 className="text-3xl font-bold text-[#5D7E2B] uppercase tracking-widest mb-16 border-b-2 border-[#7FB33C]/30 pb-4 inline-block px-8">Vereinsmeisterschaft 2026</h2>
+                            
+                            <p className="text-xl text-slate-500 mb-8 font-medium">Wir gratulieren zu einem hervorragenden</p>
+                            
+                            <div className="text-6xl font-black text-[#7FB33C] mb-12 drop-shadow-sm">{cert.rank}. Platz</div>
+                            
+                            <p className="text-xl text-slate-500 mb-3 font-medium">in der Kategorie</p>
+                            <div className="text-3xl font-bold text-black mb-16 uppercase tracking-wider bg-slate-50 px-8 py-3 rounded-xl border border-slate-100 shadow-sm">{cert.category}</div>
+                            
+                            <div className="text-5xl font-black text-black border-b-4 border-[#7FB33C] pb-4 min-w-[400px] inline-block mt-4">{cert.name}</div>
+                        </div>
+
+                        {/* Footer Signatures */}
+                        <div className="p-16 flex justify-between items-end w-full relative z-10">
+                            <div className="text-center">
+                                <div className="text-xl font-bold text-black mb-1">Wannweil, im September 2026</div>
+                                <div className="text-sm text-slate-500 font-medium">TC Wannweil e.V.</div>
+                            </div>
+                            <div className="text-center w-80">
+                                <div className="border-b-2 border-black w-full mb-3"></div>
+                                <div className="text-base font-bold text-black uppercase tracking-widest">1. Vorstand</div>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
 
 function BracketsView({ categories, tournamentStructures, matchData, highlightPlayer }) {
     const isHighlighted = (name) => {
@@ -519,13 +643,13 @@ function BracketsView({ categories, tournamentStructures, matchData, highlightPl
         const isWinner = m.winner === m[pKey] && m.score !== 'Freilos';
         const highlighted = isHighlighted(m[pKey]);
         
-        if (highlighted) return `${baseClass} bg-amber-300 text-amber-900 font-black shadow-sm ring-1 ring-amber-500`;
-        if (isWinner) return `${baseClass} bg-teal-50 font-bold text-teal-700 print:bg-transparent`;
+        if (highlighted) return `${baseClass} bg-[#5D7E2B] text-white font-black shadow-sm ring-2 ring-[#7FB33C]`;
+        if (isWinner) return `${baseClass} bg-green-50 font-bold text-[#5D7E2B] print:bg-transparent`;
         return baseClass;
     };
 
     const getStandingPlayerClass = (name) => {
-        return isHighlighted(name) ? 'bg-amber-200 font-bold text-amber-900 rounded px-1' : 'font-medium';
+        return isHighlighted(name) ? 'bg-[#5D7E2B] text-white font-bold rounded px-1' : 'font-medium';
     };
 
     if (displayCategories.length === 0 && highlightPlayer) {
@@ -545,9 +669,9 @@ function BracketsView({ categories, tournamentStructures, matchData, highlightPl
 
             return (
                 <div key={cat} className={`bg-white rounded-xl shadow-sm border border-slate-200 p-6 overflow-hidden print:break-after-page print:border-none print:shadow-none print:p-0 ${index > 0 ? 'print:pt-4' : ''} w-full`}>
-                <h3 className="text-xl font-bold text-teal-700 mb-6 border-b pb-2 flex justify-between items-center text-left">
+                <h3 className="text-xl font-bold text-slate-800 mb-6 border-b pb-2 flex justify-between items-center text-left">
                     {cat}
-                    {data.type === 'knockout' && <span className="text-xs bg-teal-100 text-teal-800 px-2 py-1 rounded uppercase tracking-widest font-bold">K.O.-System</span>}
+                    {data.type === 'knockout' && <span className="text-xs bg-[#7FB33C]/20 text-[#5D7E2B] px-2 py-1 rounded uppercase tracking-widest font-bold border border-[#7FB33C]/30">K.O.-System</span>}
                 </h3>
                 
                 {data.type === 'knockout' ? (
@@ -569,16 +693,16 @@ function BracketsView({ categories, tournamentStructures, matchData, highlightPl
                         })}
                         
                         {final && (
-                            <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl ml-4 print:bg-transparent print:border-2 text-left">
-                                <div className="text-center text-xs text-amber-600 font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
-                                <div className="bg-white border-2 border-amber-300 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800">
+                            <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-[#7FB33C]/10 border border-[#7FB33C]/30 p-4 rounded-xl ml-4 print:bg-transparent print:border-2 text-left">
+                                <div className="text-center text-xs text-[#5D7E2B] font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
+                                <div className="bg-white border-2 border-[#7FB33C]/40 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800">
                                     <div className={getPlayerClass(final, 'player1')}>{final.player1}</div>
                                     <div className="border-t border-slate-100 my-1"></div>
                                     <div className={getPlayerClass(final, 'player2')}>{final.player2}</div>
                                 </div>
                                 {final.winner && (
                                     <div className="mt-3 text-center">
-                                        <span className="bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full font-bold shadow-sm print:border print:border-amber-400 print:bg-transparent">Sieger: {final.winner}</span>
+                                        <span className="bg-[#7FB33C] text-white text-xs px-3 py-1 rounded-full font-bold shadow-sm print:border print:border-[#7FB33C] print:bg-transparent print:text-[#5D7E2B]">Sieger: {final.winner}</span>
                                     </div>
                                 )}
                             </div>
@@ -614,7 +738,7 @@ function BracketsView({ categories, tournamentStructures, matchData, highlightPl
                                         <li key={pIdx} className="px-4 py-2.5 text-sm text-slate-800 flex justify-between items-center hover:bg-slate-50 transition-colors">
                                         <span className={`break-words w-1/2 ${getStandingPlayerClass(p.name)}`}>{pIdx + 1}. {p.name}</span>
                                         <div className="flex w-1/2 justify-end gap-3 text-center font-mono">
-                                            <span className="w-6 font-bold text-teal-600 bg-teal-50 rounded print:bg-transparent print:text-black">{p.wins}</span>
+                                            <span className="w-6 font-bold text-[#5D7E2B] bg-[#7FB33C]/10 rounded print:bg-transparent print:text-black">{p.wins}</span>
                                             <span className="w-10 text-slate-500 text-xs flex items-center justify-center">{p.gamesWon}:{p.gamesLost}</span>
                                             <span className={`w-8 font-medium text-xs flex items-center justify-center ${p.diff > 0 ? 'text-green-600' : p.diff < 0 ? 'text-red-500' : 'text-slate-400'}`}>
                                             {p.diff > 0 ? '+' : ''}{p.diff}
@@ -628,10 +752,10 @@ function BracketsView({ categories, tournamentStructures, matchData, highlightPl
                                         <h5 className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wider">Gruppenspiele</h5>
                                         <div className="space-y-1.5">
                                             {groupMatchesForTable.map(m => (
-                                                <div key={m.id} className={`text-xs flex justify-between items-center p-1.5 rounded border shadow-sm print:shadow-none print:border-b-0 ${isHighlighted(m.player1) || isHighlighted(m.player2) ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
-                                                    <span className={`break-words w-[42%] ${m.winner === m.player1 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'} ${isHighlighted(m.player1) ? 'text-amber-900 font-black' : ''}`}>{m.player1}</span>
+                                                <div key={m.id} className={`text-xs flex justify-between items-center p-1.5 rounded border shadow-sm print:shadow-none print:border-b-0 ${isHighlighted(m.player1) || isHighlighted(m.player2) ? 'bg-[#7FB33C]/10 border-[#7FB33C]/40' : 'bg-white border-slate-200'}`}>
+                                                    <span className={`break-words w-[42%] ${m.winner === m.player1 ? 'font-bold text-[#5D7E2B] print:text-black' : 'text-slate-600'} ${isHighlighted(m.player1) ? 'text-[#5D7E2B] font-black' : ''}`}>{m.player1}</span>
                                                     <span className="text-[10px] text-slate-400 font-mono text-center w-1/6 bg-slate-50 rounded px-1 print:bg-transparent print:text-black">{m.score || '-:-'}</span>
-                                                    <span className={`break-words w-[42%] text-right ${m.winner === m.player2 ? 'font-bold text-teal-700 print:text-black' : 'text-slate-600'} ${isHighlighted(m.player2) ? 'text-amber-900 font-black' : ''}`}>{m.player2}</span>
+                                                    <span className={`break-words w-[42%] text-right ${m.winner === m.player2 ? 'font-bold text-[#5D7E2B] print:text-black' : 'text-slate-600'} ${isHighlighted(m.player2) ? 'text-[#5D7E2B] font-black' : ''}`}>{m.player2}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -669,16 +793,16 @@ function BracketsView({ categories, tournamentStructures, matchData, highlightPl
                             )}
 
                             {final && (
-                                <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-amber-50 border border-amber-200 p-4 rounded-xl print:bg-transparent print:border-2 text-left">
-                                <div className="text-center text-xs text-amber-600 font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
-                                <div className="bg-white border-2 border-amber-300 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800 print:shadow-none">
+                                <div className="flex flex-col w-full min-w-[220px] relative z-10 bg-[#7FB33C]/10 border border-[#7FB33C]/30 p-4 rounded-xl print:bg-transparent print:border-2 text-left">
+                                <div className="text-center text-xs text-[#5D7E2B] font-black tracking-widest uppercase mb-3 flex items-center justify-center gap-1"><Trophy size={14}/> {final.name}</div>
+                                <div className="bg-white border-2 border-[#7FB33C]/40 p-2 rounded-lg shadow-sm text-sm font-bold text-slate-800 print:shadow-none">
                                     <div className={getPlayerClass(final, 'player1')}>{final.player1}</div>
                                     <div className="border-t border-slate-100 my-1"></div>
                                     <div className={getPlayerClass(final, 'player2')}>{final.player2}</div>
                                 </div>
                                 {final.winner && (
                                     <div className="mt-3 text-center">
-                                        <span className="bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full font-bold shadow-sm print:border print:border-amber-400 print:bg-transparent">Sieger: {final.winner}</span>
+                                        <span className="bg-[#7FB33C] text-white text-xs px-3 py-1 rounded-full font-bold shadow-sm print:border print:border-[#7FB33C] print:bg-transparent print:text-[#5D7E2B]">Sieger: {final.winner}</span>
                                     </div>
                                 )}
                                 </div>
@@ -695,20 +819,20 @@ function BracketsView({ categories, tournamentStructures, matchData, highlightPl
     );
 }
 
-function MonitorView({ timeSlots, matchData, tournamentStructures, categories, onExit, currentUrl }) {
+function MonitorView({ timeSlots, matchData, tournamentStructures, categories, onExit }) {
   const [activeIndices, setActiveIndices] = useState([0, 1]);
   const [monitorTab, setMonitorTab] = useState('live');
   const [playerFilter, setPlayerFilter] = useState('');
 
   const allPlayers = React.useMemo(() => {
       const players = new Set();
-      Object.values(matchData).forEach(m => {
+      Object.values(matchData || {}).forEach(m => {
           const addPlayer = (p) => {
               if (!p || p === 'Freilos' || p.includes('Gruppe') || p.includes('Sieger') || p.includes('Platz')) return;
               players.add(p);
           };
-          addPlayer(m.player1);
-          addPlayer(m.player2);
+          addPlayer(m?.player1);
+          addPlayer(m?.player2);
       });
       return Array.from(players).sort();
   }, [matchData]);
@@ -717,7 +841,7 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
       const map = {};
       if(timeSlots) {
           timeSlots.forEach(slot => {
-              slot.matchIds.forEach(id => {
+              (slot.matchIds || []).forEach(id => {
                   map[id] = { time: slot.time, endTime: slot.endTime, slotType: slot.slotType };
               });
           });
@@ -726,11 +850,11 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
   }, [timeSlots]);
 
   const filteredMatches = React.useMemo(() => {
-      if (!playerFilter.trim()) return [];
+      if (!playerFilter.trim() || !matchData) return [];
       const filterLower = playerFilter.toLowerCase();
       return Object.values(matchData)
-          .filter(m => (m.player1 && m.player1.toLowerCase().includes(filterLower)) ||
-                       (m.player2 && m.player2.toLowerCase().includes(filterLower)))
+          .filter(m => ((m?.player1 || '').toLowerCase().includes(filterLower)) ||
+                       ((m?.player2 || '').toLowerCase().includes(filterLower)))
           .map(m => ({ ...m, timeInfo: matchTimeMap[m.id] || { time: 'Offen', endTime: '' } }))
           .sort((a, b) => {
               const tA = a.timeInfo.time === 'Offen' ? '99:99' : a.timeInfo.time;
@@ -740,14 +864,14 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
   }, [matchData, playerFilter, matchTimeMap]);
 
   useEffect(() => {
-    if (!timeSlots || timeSlots.length === 0) return;
+    if (!timeSlots || timeSlots.length === 0 || !matchData) return;
     
     const findActiveSlots = () => {
         let firstUnfinished = -1;
         for (let i = 0; i < timeSlots.length; i++) {
             const slot = timeSlots[i];
             let isCompleted = true;
-            for (const id of slot.matchIds) {
+            for (const id of (slot.matchIds || [])) {
                 const match = matchData[id];
                 if (match && match.score !== 'Freilos' && !match.winner) {
                     isCompleted = false;
@@ -765,7 +889,7 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
             while (secondUnfinished < timeSlots.length) {
                 const slot = timeSlots[secondUnfinished];
                 let isCompleted = true;
-                for (const id of slot.matchIds) {
+                for (const id of (slot.matchIds || [])) {
                     const match = matchData[id];
                     if (match && match.score !== 'Freilos' && !match.winner) {
                         isCompleted = false;
@@ -788,13 +912,13 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
 
   if (!timeSlots || timeSlots.length === 0) {
       return (
-          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-slate-100 w-full relative">
-             <button onClick={onExit} className="absolute top-6 right-6 p-3 rounded-full hover:bg-slate-700 text-slate-400 transition-colors">
+          <div className="min-h-screen bg-black flex flex-col items-center justify-center p-8 text-white w-full relative">
+             <button onClick={onExit} className="absolute top-6 right-6 p-3 rounded-full hover:bg-zinc-800 text-zinc-400 transition-colors">
                 <X size={24} />
              </button>
-             <Trophy className="w-24 h-24 text-teal-500 mb-6" />
+             <img src="TCW-Logo.png" alt="TC Wannweil Logo" className="w-32 h-32 mb-6 opacity-80" onError={(e) => e.target.style.display='none'} />
              <h1 className="text-4xl font-bold mb-4 text-center">TC Wannweil Vereinsmeisterschaft</h1>
-             <p className="text-xl text-slate-400 text-center">Es wurde noch kein Spielplan generiert.</p>
+             <p className="text-xl text-zinc-400 text-center">Es wurde noch kein Spielplan generiert.</p>
           </div>
       );
   }
@@ -803,28 +927,28 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
   const slot2 = timeSlots[activeIndices[1]];
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans relative overflow-hidden w-full">
-        <header className="bg-slate-800 p-4 md:p-6 flex justify-between items-center shadow-lg border-b border-slate-700 w-full">
+    <div className="min-h-screen bg-black text-white flex flex-col font-sans relative overflow-hidden w-full">
+        <header className="bg-black p-4 md:p-6 flex justify-between items-center shadow-lg border-b border-[#7FB33C]/20 w-full relative z-10">
             <div className="flex items-center gap-3 md:gap-4">
-                <Trophy className="w-8 h-8 md:w-10 md:h-10 text-teal-400" />
+                <img src="TCW-Logo.png" alt="TC Wannweil Logo" className="h-10 md:h-12 w-auto bg-white rounded-full p-1" onError={(e) => { e.target.onerror = null; e.target.outerHTML = '<div class="w-10 h-10 bg-white rounded-full flex items-center justify-center"><span class="text-black font-bold">TCW</span></div>'; }} />
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">TC Wannweil</h1>
-                    <p className="text-teal-400 text-sm md:text-lg font-medium">Turnier Monitor</p>
+                    <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white uppercase" style={{fontFamily: "'Roboto', sans-serif"}}>TC Wannweil</h1>
+                    <p className="text-[#7FB33C] text-sm md:text-lg font-medium">Turnier Monitor</p>
                 </div>
             </div>
             <div className="flex items-center gap-4 md:gap-6">
-                <button onClick={onExit} className="p-2 md:p-3 rounded-full hover:bg-slate-700 text-slate-400 transition-colors" title="Monitoransicht beenden">
+                <button onClick={onExit} className="p-2 md:p-3 rounded-full hover:bg-zinc-800 text-zinc-400 transition-colors" title="Monitoransicht beenden">
                     <X size={24} />
                 </button>
             </div>
         </header>
 
-        <div className="flex bg-slate-800 p-2 md:p-4 gap-2 justify-center border-b border-slate-700 xl:hidden">
-            <button onClick={() => setMonitorTab('live')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'live' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700'}`}>Live Spiele</button>
-            <button onClick={() => setMonitorTab('brackets')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'brackets' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-700'}`}>Tabellen & Turnierbaum</button>
+        <div className="flex bg-zinc-900 p-2 md:p-4 gap-2 justify-center border-b border-zinc-800 xl:hidden">
+            <button onClick={() => setMonitorTab('live')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'live' ? 'bg-[#7FB33C] text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800'}`}>Live Spiele</button>
+            <button onClick={() => setMonitorTab('brackets')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'brackets' ? 'bg-[#7FB33C] text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800'}`}>Tabellen & Turnierbaum</button>
         </div>
 
-        <div className="xl:hidden px-4 md:px-8 pt-4 pb-2 w-full flex justify-center bg-slate-900 border-b border-slate-800 shadow-inner">
+        <div className="xl:hidden px-4 md:px-8 pt-4 pb-2 w-full flex justify-center bg-black border-b border-zinc-900 shadow-inner">
             <div className="w-full max-w-md relative">
                 <input
                     type="search"
@@ -832,25 +956,25 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                     placeholder="🔍 Spieler filtern (Zeitplan & Ergebnisse)..."
                     value={playerFilter}
                     onChange={(e) => setPlayerFilter(e.target.value)}
-                    className="w-full bg-slate-800 text-white border border-slate-600 rounded-lg py-2.5 pl-4 pr-10 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/50 shadow-inner placeholder-slate-400 text-sm md:text-base"
+                    className="w-full bg-zinc-900 text-white border border-zinc-700 rounded-lg py-2.5 pl-4 pr-10 outline-none focus:border-[#7FB33C] focus:ring-2 focus:ring-[#7FB33C]/50 shadow-inner placeholder-zinc-500 text-sm md:text-base"
                 />
                 <datalist id="player-list">
                     {allPlayers.map((p, i) => <option key={i} value={p} />)}
                 </datalist>
                 {playerFilter && (
-                    <button onClick={() => setPlayerFilter('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1">
+                    <button onClick={() => setPlayerFilter('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1">
                         <X size={16} />
                     </button>
                 )}
             </div>
         </div>
 
-        <div className="flex-1 p-4 md:p-8 flex flex-col gap-8 overflow-y-auto pb-32 w-full text-center">
+        <div className="flex-1 p-4 md:p-8 flex flex-col gap-8 overflow-y-auto pb-32 w-full text-center" style={{ backgroundImage: 'radial-gradient(circle at center, #1a1a1a 0%, #000000 100%)' }}>
             {monitorTab === 'live' ? (
                 playerFilter.trim() ? (
-                    <section className="bg-slate-800 rounded-2xl p-4 md:p-6 shadow-2xl border border-teal-900/50 w-full text-left">
+                    <section className="bg-zinc-900/80 rounded-2xl p-4 md:p-6 shadow-2xl border border-[#7FB33C]/30 w-full text-left backdrop-blur-sm">
                         <h2 className="text-xl md:text-2xl font-bold mb-6 text-white flex items-center gap-3">
-                            <span className="bg-teal-600 px-3 py-1 rounded-lg text-xs md:text-sm uppercase tracking-wider">Gefiltert</span>
+                            <span className="bg-[#5D7E2B] px-3 py-1 rounded-lg text-xs md:text-sm uppercase tracking-wider">Gefiltert</span>
                             Spiele für "{playerFilter}"
                         </h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
@@ -859,20 +983,21 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                             ))}
                         </div>
                         {filteredMatches.length === 0 && (
-                            <div className="text-center py-12 text-slate-400 font-medium bg-slate-800/50 rounded-xl border border-slate-700">Keine geplanten Spiele für diesen Suchbegriff gefunden.</div>
+                            <div className="text-center py-12 text-zinc-400 font-medium bg-zinc-800/50 rounded-xl border border-zinc-700">Keine geplanten Spiele für diesen Suchbegriff gefunden.</div>
                         )}
                     </section>
                 ) : (
                 <>
                     {slot1 && (
-                        <section className="bg-slate-800 rounded-2xl p-4 md:p-6 shadow-2xl border border-teal-900/50 w-full text-left">
-                            <h2 className="text-xl md:text-2xl font-bold mb-6 flex items-center gap-3 text-white">
-                                <span className="bg-teal-500 text-white px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm">Aktuell</span>
-                                <Clock className="text-teal-400" /> {slot1.time || ''} - {slot1.endTime || ''} Uhr
+                        <section className="bg-zinc-900/90 rounded-2xl p-4 md:p-6 shadow-[0_0_30px_rgba(127,179,60,0.15)] border border-[#7FB33C]/40 w-full text-left relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-[#7FB33C]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+                            <h2 className="text-xl md:text-2xl font-bold mb-6 flex items-center gap-3 text-white relative z-10">
+                                <span className="bg-[#7FB33C] text-black px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm font-black">Aktuell</span>
+                                <Clock className="text-[#7FB33C]" /> {slot1.time || ''} - {slot1.endTime || ''} Uhr
                             </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 relative z-10">
                                 {(slot1.matchIds || []).map(id => {
-                                    const match = matchData[id];
+                                    const match = matchData ? matchData[id] : null;
                                     if (!match) return null;
                                     return <MonitorMatchCard key={id} match={match} />
                                 })}
@@ -881,14 +1006,14 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                     )}
 
                     {slot2 && (
-                        <section className="bg-slate-800/50 rounded-2xl p-4 md:p-6 border border-slate-700 w-full text-left">
-                            <h2 className="text-lg md:text-xl font-bold mb-6 flex items-center gap-3 text-slate-300">
-                                <span className="bg-slate-700 text-slate-300 px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm">Als nächstes</span>
-                                <Clock className="text-slate-400" /> {slot2.time || ''} - {slot2.endTime || ''} Uhr
+                        <section className="bg-zinc-900/40 rounded-2xl p-4 md:p-6 border border-zinc-800 w-full text-left mt-4">
+                            <h2 className="text-lg md:text-xl font-bold mb-6 flex items-center gap-3 text-zinc-300">
+                                <span className="bg-zinc-700 text-zinc-300 px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm">Als nächstes</span>
+                                <Clock className="text-zinc-400" /> {slot2.time || ''} - {slot2.endTime || ''} Uhr
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 opacity-80">
-                                {slot2.matchIds.map(id => {
-                                    const match = matchData[id];
+                                {(slot2.matchIds || []).map(id => {
+                                    const match = matchData ? matchData[id] : null;
                                     if (!match) return null;
                                     return <MonitorMatchCard key={id} match={match} />
                                 })}
@@ -898,56 +1023,59 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                 </>
                 )
             ) : (
-                <section className="bg-slate-50 text-slate-900 rounded-2xl p-4 md:p-8 border border-slate-200 w-full shadow-2xl">
+                <section className="bg-zinc-100 text-zinc-900 rounded-2xl p-4 md:p-8 border border-zinc-200 w-full shadow-2xl">
                     <BracketsView categories={categories} tournamentStructures={tournamentStructures} matchData={matchData} highlightPlayer={playerFilter} />
                 </section>
             )}
         </div>
 
-        <div className="hidden xl:flex absolute bottom-4 right-4 md:bottom-6 md:right-6 bg-white p-3 md:p-4 rounded-xl shadow-2xl flex-col items-center gap-2 border-4 border-slate-800">
+        <div className="hidden xl:flex absolute bottom-4 right-4 md:bottom-6 md:right-6 bg-white p-3 md:p-4 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex-col items-center gap-2 border-4 border-[#7FB33C]">
             <img src="adobe-express-qr-code (3).png" alt="QR Code" className="w-[100px] h-[100px] object-contain rounded bg-white p-1" />
-            <span className="text-[10px] md:text-xs font-bold text-slate-800 uppercase tracking-wider">Plan auf dem Handy</span>
+            <span className="text-[10px] md:text-xs font-bold text-black uppercase tracking-wider">Plan auf dem Handy</span>
         </div>
     </div>
   );
 }
 
 function MonitorMatchCard({ match, customTime }) {
+    if (!match) return null;
     const isPlaceholder = (match.player1 || '').includes('Gruppe') || (match.player1 || '').includes('Sieger') || (match.player1 || '').includes('Platz');
     
     return (
-        <div className={`rounded-xl p-4 md:p-5 flex flex-col gap-3 h-full border-2 ${match.isFinal ? 'bg-amber-900/20 border-amber-500/50' : 'bg-slate-700/50 border-slate-600'}`}>
-            <div className="flex justify-between items-start">
+        <div className={`rounded-xl p-4 md:p-5 flex flex-col gap-3 h-full border-2 ${match.isFinal ? 'bg-[#7FB33C]/10 border-[#7FB33C]' : 'bg-black border-zinc-700'} relative overflow-hidden`}>
+            {match.isFinal && <div className="absolute top-0 right-0 w-16 h-16 bg-[#7FB33C]/20 blur-xl rounded-full"></div>}
+            
+            <div className="flex justify-between items-start relative z-10">
                 <div className="flex flex-col gap-1">
-                    <span className="text-[10px] md:text-xs font-bold text-teal-400 uppercase tracking-wider">{match.category}</span>
-                    <span className="text-xs md:text-sm font-medium text-slate-300">{match.type} {match.name && `- ${match.name}`}</span>
+                    <span className="text-[10px] md:text-xs font-bold text-[#7FB33C] uppercase tracking-wider">{match.category || ''}</span>
+                    <span className="text-xs md:text-sm font-medium text-zinc-300">{match.type || ''} {match.name && `- ${match.name}`}</span>
                     {customTime && (
-                        <span className="text-xs font-bold text-amber-400 mt-1 flex items-center gap-1"><Clock size={12} /> {customTime}</span>
+                        <span className="text-xs font-bold text-[#7FB33C] mt-1 flex items-center gap-1"><Clock size={12} /> {customTime}</span>
                     )}
                 </div>
-                <div className="bg-slate-900 text-white font-black text-lg md:text-xl w-8 h-8 md:w-10 md:h-10 rounded-lg flex items-center justify-center shadow-inner shrink-0 ml-2">
+                <div className="bg-[#7FB33C] text-black font-black text-lg md:text-xl w-8 h-8 md:w-10 md:h-10 rounded flex items-center justify-center shadow-lg shrink-0 ml-2">
                     {match.court || 1}
                 </div>
             </div>
             
-            <div className="flex flex-col gap-3 mt-2 flex-grow justify-center">
-                <div className={`font-medium text-base md:text-lg leading-tight break-words ${match.winner === match.player1 ? 'text-teal-300 font-bold' : 'text-white'}`}>
+            <div className="flex flex-col gap-3 mt-2 flex-grow justify-center relative z-10">
+                <div className={`font-medium text-base md:text-lg leading-tight break-words ${match.winner === match.player1 ? 'text-[#7FB33C] font-bold' : 'text-white'}`}>
                     {match.player1 || ''}
                 </div>
-                <div className="text-xs md:text-sm text-slate-500 font-serif italic text-center w-full my-[-8px]">vs</div>
-                <div className={`font-medium text-base md:text-lg leading-tight break-words ${match.winner === match.player2 ? 'text-teal-300 font-bold' : 'text-white'}`}>
+                <div className="text-xs md:text-sm text-zinc-500 font-serif italic text-center w-full my-[-8px]">vs</div>
+                <div className={`font-medium text-base md:text-lg leading-tight break-words ${match.winner === match.player2 ? 'text-[#7FB33C] font-bold' : 'text-white'}`}>
                     {match.player2 || ''}
                 </div>
             </div>
 
             {match.score && (
-                <div className="mt-3 bg-slate-900/50 py-2 rounded-lg text-center font-bold text-teal-300 tracking-wider">
+                <div className="mt-3 bg-[#7FB33C]/20 border border-[#7FB33C]/30 py-2 rounded-lg text-center font-bold text-white tracking-wider relative z-10">
                     {match.score}
                 </div>
             )}
             
             {isPlaceholder && !match.score && (
-                 <div className="mt-3 py-2 rounded-lg text-center text-xs md:text-sm font-medium text-slate-500">
+                 <div className="mt-3 py-2 rounded-lg text-center text-xs md:text-sm font-medium text-zinc-500 relative z-10">
                     {match.isFinal ? 'Finalisten noch offen' : 'Wartet auf Vorrunde'}
                  </div>
             )}
@@ -970,18 +1098,18 @@ function SpielleiterView({ timeSlots, matchData, onSaveResult, isSavingToCloud, 
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans relative w-full">
-            <header className="bg-teal-700 p-4 shadow-md sticky top-0 z-50 flex justify-between items-center w-full">
+            <header className="bg-black p-4 shadow-md sticky top-0 z-50 flex justify-between items-center w-full border-b-2 border-[#7FB33C]">
                 <div className="flex items-center gap-3">
-                    <Edit2 className="w-6 h-6 text-teal-200" />
+                    <Edit2 className="w-6 h-6 text-[#7FB33C]" />
                     <div>
                         <h1 className="text-lg font-bold text-white leading-tight">Spielleiter</h1>
-                        <p className="text-teal-200 text-xs font-medium flex items-center gap-1">
+                        <p className="text-[#7FB33C] text-xs font-medium flex items-center gap-1">
                             {isSavingToCloud ? <Cloud className="animate-pulse w-3 h-3" /> : <Cloud className="w-3 h-3" />}
                             {isSavingToCloud ? 'Speichert...' : 'Live-Sync aktiv'}
                         </p>
                     </div>
                 </div>
-                <button onClick={onExit} className="p-2 rounded-lg bg-teal-800 hover:bg-teal-900 text-white transition-colors text-sm font-medium flex items-center gap-2">
+                <button onClick={onExit} className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white transition-colors text-sm font-medium flex items-center gap-2">
                     <LogIn size={16} className="rotate-180 hidden sm:block" /> Logout
                 </button>
             </header>
@@ -993,14 +1121,14 @@ function SpielleiterView({ timeSlots, matchData, onSaveResult, isSavingToCloud, 
                     if (!hasMatches) return null;
 
                     return (
-                        <div key={index} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden w-full">
-                            <div className={`px-4 py-2 border-b flex items-center justify-between sticky top-0 z-40 ${slot.slotType === 'final' ? 'bg-amber-100 border-amber-200' : 'bg-slate-100 border-slate-200'}`}>
+                        <div key={index} className="bg-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.05)] border border-slate-200 overflow-hidden w-full">
+                            <div className={`px-4 py-2 border-b flex items-center justify-between sticky top-0 z-40 ${slot.slotType === 'final' ? 'bg-[#7FB33C]/10 border-[#7FB33C]/30' : 'bg-slate-100 border-slate-200'}`}>
                                 <div className="flex items-center gap-2 font-bold text-base text-slate-800">
-                                    <Clock size={16} className={slot.slotType === 'final' ? 'text-amber-600' : 'text-slate-500'} />
+                                    <Clock size={16} className={slot.slotType === 'final' ? 'text-[#5D7E2B]' : 'text-slate-500'} />
                                     {slot.time || ''} - {slot.endTime || ''}
                                 </div>
                                 {slot.slotType === 'final' && (
-                                    <span className="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1"><Trophy size={10} /> Finals</span>
+                                    <span className="bg-[#7FB33C] text-white text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1"><Trophy size={10} /> Finals</span>
                                 )}
                             </div>
                             <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
@@ -1056,23 +1184,23 @@ function SpielleiterMatchCard({ match, onSaveResult }) {
     };
 
     return (
-        <div className={`border-2 rounded-xl p-4 relative flex flex-col h-full w-full ${match.isFinal ? 'border-amber-300 bg-amber-50/30' : 'border-slate-200 bg-white shadow-sm'}`}>
+        <div className={`border-2 rounded-xl p-4 relative flex flex-col h-full w-full ${match.isFinal ? 'border-[#7FB33C] bg-[#7FB33C]/5' : 'border-slate-200 bg-white shadow-sm'}`}>
             <div className="flex justify-between items-start mb-3">
                 <div>
-                    <div className="text-xs font-black text-teal-600 uppercase tracking-wider">{match.category || ''}</div>
+                    <div className="text-xs font-black text-[#5D7E2B] uppercase tracking-wider">{match.category || ''}</div>
                     <div className="text-xs font-semibold text-slate-500">{match.type || ''} {match.name && `- ${match.name}`}</div>
                 </div>
-                <div className="bg-slate-800 text-white font-bold text-lg w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-sm">
+                <div className="bg-black text-[#7FB33C] font-bold text-lg w-8 h-8 rounded flex items-center justify-center shrink-0 shadow-sm border border-zinc-800">
                     {match.court || 1}
                 </div>
             </div>
 
             <div className="flex flex-col gap-2 flex-grow mt-1">
-                <div className={`font-medium text-base leading-tight break-words flex gap-2 ${match.winner === match.player1 ? 'text-teal-700 font-bold' : 'text-slate-800'}`}>
+                <div className={`font-medium text-base leading-tight break-words flex gap-2 ${match.winner === match.player1 ? 'text-[#5D7E2B] font-bold' : 'text-slate-800'}`}>
                     <span className="text-slate-400 font-mono text-sm mt-0.5">1</span> {match.player1 || ''}
                 </div>
                 <div className="text-xs text-slate-400 font-serif italic py-0.5">vs</div>
-                <div className={`font-medium text-base leading-tight break-words flex gap-2 ${match.winner === match.player2 ? 'text-teal-700 font-bold' : 'text-slate-800'}`}>
+                <div className={`font-medium text-base leading-tight break-words flex gap-2 ${match.winner === match.player2 ? 'text-[#5D7E2B] font-bold' : 'text-slate-800'}`}>
                     <span className="text-slate-400 font-mono text-sm mt-0.5">2</span> {match.player2 || ''}
                 </div>
             </div>
@@ -1082,7 +1210,7 @@ function SpielleiterMatchCard({ match, onSaveResult }) {
                     !isEditing && match.winner ? (
                         <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 active:bg-slate-100 cursor-pointer" onClick={() => setIsEditing(true)}>
                             <div className="text-base font-bold text-slate-800">{match.score || ''}</div>
-                            <div className="text-teal-600 flex items-center gap-1 text-sm font-medium"><Edit2 size={16} /> Ändern</div>
+                            <div className="text-[#5D7E2B] flex items-center gap-1 text-sm font-medium"><Edit2 size={16} /> Ändern</div>
                         </div>
                     ) : (
                         <div className="flex flex-col gap-3">
@@ -1090,7 +1218,7 @@ function SpielleiterMatchCard({ match, onSaveResult }) {
                                 type="text" 
                                 inputMode="text"
                                 placeholder={match.isFinal ? "z.B. 6:4, 6:2" : "z.B. 10:5"} 
-                                className="w-full text-base p-3 border-2 border-slate-300 rounded-lg focus:border-teal-500 focus:ring-2 focus:ring-teal-200 outline-none font-bold text-center" 
+                                className="w-full text-base p-3 border-2 border-slate-300 rounded-lg focus:border-[#7FB33C] focus:ring-2 focus:ring-[#7FB33C]/30 outline-none font-bold text-center" 
                                 value={scoreInput} 
                                 onChange={handleScoreChange} 
                             />
@@ -1099,13 +1227,13 @@ function SpielleiterMatchCard({ match, onSaveResult }) {
                                 <div className="flex flex-col gap-2">
                                     <div className="text-xs text-center text-slate-500 font-medium">Wer hat gewonnen?</div>
                                     <div className="flex gap-2">
-                                        <button onClick={() => setWinnerInput(match.player1)} className={`flex-1 text-xs sm:text-sm py-2.5 rounded-lg border-2 transition-colors font-bold ${winnerInput === match.player1 ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>Sieg 1</button>
-                                        <button onClick={() => setWinnerInput(match.player2)} className={`flex-1 text-xs sm:text-sm py-2.5 rounded-lg border-2 transition-colors font-bold ${winnerInput === match.player2 ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>Sieg 2</button>
+                                        <button onClick={() => setWinnerInput(match.player1)} className={`flex-1 text-xs sm:text-sm py-2.5 rounded-lg border-2 transition-colors font-bold ${winnerInput === match.player1 ? 'bg-[#7FB33C] text-white border-[#5D7E2B] shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>Sieg 1</button>
+                                        <button onClick={() => setWinnerInput(match.player2)} className={`flex-1 text-xs sm:text-sm py-2.5 rounded-lg border-2 transition-colors font-bold ${winnerInput === match.player2 ? 'bg-[#7FB33C] text-white border-[#5D7E2B] shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>Sieg 2</button>
                                     </div>
-                                    <button onClick={handleSave} disabled={!winnerInput || !scoreInput} className="w-full bg-teal-600 text-white text-sm py-3 rounded-lg font-bold shadow-md disabled:opacity-50 mt-1 flex justify-center items-center gap-2"><Check size={18} /> Speichern</button>
+                                    <button onClick={handleSave} disabled={!winnerInput || !scoreInput} className="w-full bg-black text-[#7FB33C] text-sm py-3 rounded-lg font-bold shadow-md disabled:opacity-50 mt-1 flex justify-center items-center gap-2 border border-zinc-800"><Check size={18} /> Speichern</button>
                                 </div>
                             ) : (
-                                <button onClick={handleSave} disabled={!winnerInput || !scoreInput} className="w-full bg-teal-600 text-white text-sm py-3 rounded-lg font-bold shadow-md disabled:opacity-50 flex justify-center items-center gap-2 transition-colors"><Check size={18} /> Ergebnis Speichern</button>
+                                <button onClick={handleSave} disabled={!winnerInput || !scoreInput} className="w-full bg-black text-[#7FB33C] text-sm py-3 rounded-lg font-bold shadow-md disabled:opacity-50 flex justify-center items-center gap-2 transition-colors border border-zinc-800"><Check size={18} /> Ergebnis Speichern</button>
                             )}
                         </div>
                     )
@@ -1137,46 +1265,41 @@ function LoginScreen({ onLoginAdmin, onLoginSpielleiter, onMonitor, initialMode 
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 w-full">
-            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-100">
+        <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 w-full" style={{ backgroundImage: 'radial-gradient(circle at center, #1a1a1a 0%, #000000 100%)' }}>
+            <div className="bg-white p-8 rounded-2xl shadow-[0_10px_40px_rgba(127,179,60,0.15)] w-full max-w-md border-t-4 border-[#7FB33C]">
                 <div className="flex flex-col items-center mb-6">
-                    <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mb-4">
-                        <Lock className="w-8 h-8 text-teal-600" />
-                    </div>
-                    <h1 className="text-2xl font-bold text-slate-800 text-center">TC Wannweil</h1>
-                    <p className="text-slate-500 text-sm mt-1">Turnier Login</p>
+                    <img src="50JahreLogo3.jpg" alt="50 Jahre TC Wannweil" className="h-24 w-auto mb-4 object-contain rounded-full border-2 border-black" onError={(e) => { e.target.onerror = null; e.target.outerHTML = '<div class="w-16 h-16 bg-[#7FB33C]/20 rounded-full flex items-center justify-center mb-4"><span class="text-[#5D7E2B] font-bold">TCW</span></div>'; }} />
+                    <h1 className="text-2xl font-black text-black text-center uppercase" style={{fontFamily: "'Roboto', sans-serif"}}>TC Wannweil</h1>
+                    <p className="text-zinc-500 text-sm mt-1 font-medium">Turnierverwaltung & Live-Scoring</p>
                 </div>
                 
-                <div className="flex bg-slate-100 p-1 rounded-lg mb-6">
-                    <button type="button" onClick={() => {setLoginType('admin'); setError(''); setPassword('');}} className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${loginType === 'admin' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Verwaltung</button>
-                    <button type="button" onClick={() => {setLoginType('spielleiter'); setError(''); setPassword('');}} className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${loginType === 'spielleiter' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Spielleiter</button>
+                <div className="flex bg-zinc-100 p-1 rounded-lg mb-6 border border-zinc-200">
+                    <button type="button" onClick={() => {setLoginType('admin'); setError(''); setPassword('');}} className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${loginType === 'admin' ? 'bg-black text-[#7FB33C] shadow-sm' : 'text-zinc-500 hover:text-zinc-800'}`}>Verwaltung</button>
+                    <button type="button" onClick={() => {setLoginType('spielleiter'); setError(''); setPassword('');}} className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${loginType === 'spielleiter' ? 'bg-black text-[#7FB33C] shadow-sm' : 'text-zinc-500 hover:text-zinc-800'}`}>Spielleiter</button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                     <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">
-                            {loginType === 'admin' ? 'Admin Passwort' : 'Spielleiter Passwort'}
-                        </label>
                         <input 
                             type="password" 
                             autoFocus
-                            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-all ${error ? 'border-red-300 bg-red-50' : 'border-slate-300'}`}
+                            className={`w-full p-4 border-2 rounded-lg focus:ring-4 focus:ring-[#7FB33C]/20 outline-none transition-all font-mono text-center text-lg tracking-widest ${error ? 'border-red-400 bg-red-50 text-red-900' : 'border-zinc-300 focus:border-[#7FB33C] text-black bg-zinc-50'}`}
                             value={password}
                             onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                            placeholder="Passwort eingeben..."
+                            placeholder="••••••••"
                         />
-                        {error && <p className="text-red-500 text-xs mt-2 font-medium">{error}</p>}
+                        {error && <p className="text-red-500 text-xs mt-2 font-bold text-center">{error}</p>}
                     </div>
-                    <button type="submit" className="w-full bg-teal-600 text-white font-bold py-3 rounded-lg hover:bg-teal-700 transition-colors flex items-center justify-center gap-2 mt-2">
+                    <button type="submit" className="w-full bg-[#7FB33C] text-white font-black py-4 rounded-lg hover:bg-[#5D7E2B] transition-colors flex items-center justify-center gap-2 mt-2 uppercase tracking-wide shadow-md">
                         <LogIn size={18} /> {loginType === 'admin' ? 'Verwaltung starten' : 'Erfassung starten'}
                     </button>
                 </form>
                 
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                    <button onClick={onMonitor} className="w-full bg-slate-800 text-white font-bold py-3 rounded-lg hover:bg-slate-700 transition-colors flex items-center justify-center gap-2">
+                <div className="mt-6 pt-6 border-t border-zinc-200">
+                    <button onClick={onMonitor} className="w-full bg-black text-[#7FB33C] font-bold py-3 rounded-lg hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2 border border-zinc-800">
                         <Monitor size={18} /> Nur Monitor-Ansicht
                     </button>
-                    <p className="text-center text-xs text-slate-400 mt-3">Ideal für Smartphones oder den TV im Vereinsheim.</p>
+                    <p className="text-center text-xs text-zinc-400 mt-3">Ideal für Smartphones oder den TV im Vereinsheim.</p>
                 </div>
             </div>
         </div>
@@ -1187,6 +1310,7 @@ export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [isFirebaseInitialized, setIsFirebaseInitialized] = useState(false);
   const [isSavingToCloud, setIsSavingToCloud] = useState(false);
+  const [showCertificates, setShowCertificates] = useState(false);
 
   const [viewMode, setViewMode] = useState(() => {
       if (typeof window !== 'undefined') {
@@ -1245,7 +1369,11 @@ export default function App() {
   const [tournamentStructures, setTournamentStructures] = useState(null); 
   const [isGenerating, setIsGenerating] = useState(false);
   
-  const fileInputRef = useRef(null);
+  // Simulator State
+  const [showSimulator, setShowSimulator] = useState(false);
+  const [targetHours, setTargetHours] = useState(8);
+  const [simResults, setSimResults] = useState(null);
+  
   const appFileInputRef = useRef(null);
 
   useEffect(() => {
@@ -1371,6 +1499,148 @@ export default function App() {
       isFirebaseInitialized, firebaseUser, viewMode
   ]);
 
+  // Simulation Logic
+  const getParticipantsList = (category) => {
+    return participants[category]?.split('\n').map(p => p.trim()).filter(p => p.length > 0) || [];
+  };
+
+  const runSimulation = (simModes, simGroups) => {
+    let regularMatches = 0;
+    let finalMatches = 0;
+
+    categories.forEach(cat => {
+        const count = getParticipantsList(cat).length;
+        if (count < 2) return;
+
+        const userMode = simModes[cat] || 'standard';
+        const mode = userMode === 'ko_only' ? 'knockout' : userMode;
+        const gCountStr = simGroups[cat] || 'auto';
+        const isKinder = kinderCategories.includes(cat);
+        const shortFinal = isKinder && kinderShortFinals[cat];
+
+        if (mode === 'knockout' || (mode !== 'group_only' && count > 12)) {
+            const actualMatches = count - 1;
+            finalMatches += shortFinal ? 0 : 1;
+            regularMatches += shortFinal ? actualMatches : Math.max(0, actualMatches - 1);
+        } else {
+            let numGroups = 1;
+            if (gCountStr !== 'auto') {
+                numGroups = parseInt(gCountStr, 10);
+            } else {
+                if (isKinder || count <= 4) numGroups = 1;
+                else numGroups = 2;
+            }
+            numGroups = Math.max(1, Math.min(numGroups, Math.floor(count / 2) || 1));
+
+            let base = Math.floor(count / numGroups);
+            let rem = count % numGroups;
+            let gMatches = 0;
+            for (let i = 0; i < numGroups; i++) {
+                let s = base + (i < rem ? 1 : 0);
+                gMatches += (s * (s - 1)) / 2;
+            }
+
+            if (mode === 'group_only' || mode === 'group-only') {
+                regularMatches += gMatches;
+            } else {
+                let advancers = numGroups === 1 ? (count >= 4 ? 4 : 2) : (2 * numGroups);
+                advancers = Math.min(advancers, count);
+                let koMatches = advancers > 0 ? advancers - 1 : 0;
+                
+                regularMatches += gMatches;
+                finalMatches += shortFinal ? 0 : 1;
+                regularMatches += shortFinal ? koMatches : Math.max(0, koMatches - 1);
+            }
+        }
+    });
+
+    const totalCourtMins = (regularMatches * (matchDuration + breakDuration)) + (finalMatches * (finalDuration + breakDuration));
+    const paddedMins = totalCourtMins * 1.15; 
+    const durationMins = paddedMins / numCourts;
+    const durationHours = durationMins / 60;
+    
+    const startMins = parseTime(startTime);
+    let endMins = startMins + durationMins;
+    let endDays = Math.floor(endMins / (24*60));
+    let endH = Math.floor((endMins % (24*60)) / 60);
+    let endM = Math.round(endMins % 60);
+    
+    let endTimeStr = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')} Uhr`;
+    if (endDays > 0) endTimeStr += ` (+${endDays} Tag${endDays > 1 ? 'e' : ''})`;
+
+    return {
+        regularMatches,
+        finalMatches,
+        totalMatches: regularMatches + finalMatches,
+        durationHours,
+        durationFormatted: `${Math.floor(durationHours)}h ${Math.round((durationHours % 1) * 60)}m`,
+        endTimeStr
+    };
+  };
+
+  const generateScenarios = (targetH) => {
+      const currentStats = runSimulation(categoryModes, groupCounts);
+      
+      let maxModes = {}; let maxGroups = {};
+      categories.forEach(c => { maxModes[c] = 'standard'; maxGroups[c] = 'auto'; });
+      const maxStats = runSimulation(maxModes, maxGroups);
+
+      let minModes = {}; let minGroups = {};
+      categories.forEach(c => { minModes[c] = 'ko_only'; minGroups[c] = 'auto'; });
+      const minStats = runSimulation(minModes, minGroups);
+
+      let balModes = {}; let balGroups = {};
+      categories.forEach(c => { 
+          const count = getParticipantsList(c).length;
+          if (count >= 8) balModes[c] = 'ko_only';
+          else balModes[c] = 'standard';
+          balGroups[c] = 'auto';
+      });
+      const balStats = runSimulation(balModes, balGroups);
+
+      let optModes = { ...maxModes };
+      let optGroups = { ...maxGroups };
+      let currentOptStats = runSimulation(optModes, optGroups);
+      
+      if (currentOptStats.durationHours > targetH) {
+          const sortedCats = [...categories].sort((a,b) => getParticipantsList(b).length - getParticipantsList(a).length);
+          for (let c of sortedCats) {
+              if (getParticipantsList(c).length >= 4) {
+                  optModes[c] = 'ko_only';
+                  currentOptStats = runSimulation(optModes, optGroups);
+                  if (currentOptStats.durationHours <= targetH) break;
+              }
+          }
+      }
+      const optStats = currentOptStats;
+
+      return { 
+          current: { modes: categoryModes, groups: groupCounts, stats: currentStats }, 
+          max: { modes: maxModes, groups: maxGroups, stats: maxStats }, 
+          min: { modes: minModes, groups: minGroups, stats: minStats }, 
+          bal: { modes: balModes, groups: balGroups, stats: balStats }, 
+          opt: { modes: optModes, groups: optGroups, stats: optStats } 
+      };
+  };
+
+  useEffect(() => {
+      if (activeTab === 'settings' && showSimulator) {
+          setSimResults(generateScenarios(targetHours));
+      }
+  }, [activeTab, showSimulator, targetHours, categories, participants, numCourts, matchDuration, breakDuration, finalDuration, kinderShortFinals, categoryModes, groupCounts]);
+
+  const applyScenario = (scenario) => {
+      setCategoryModes(scenario.modes);
+      setGroupCounts(scenario.groups);
+      setTimeSlots(null); 
+      setTournamentStructures(null); 
+      setMatchData({});
+  };
+
+  const isCurrentScenario = (modes, groups) => {
+      return categories.every(c => (categoryModes[c] || 'standard') === (modes[c] || 'standard') && (groupCounts[c] || 'auto') === (groups[c] || 'auto'));
+  };
+
   const handleParseRawInput = () => {
       if (!rawAppInput.trim()) return;
       const lines = rawAppInput.split('\n').map(l => l.trim()).filter(l => l);
@@ -1390,10 +1660,6 @@ export default function App() {
               data.tel = line.replace(/Tel\.?:/, '').trim();
           } 
           else if (line === 'Teilnahme an:') {
-<<<<<<< HEAD
-=======
-              // Read all subsequent lines as categories until a new key (colon) is found
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
               let j = i + 1;
               while (j < lines.length && !lines[j].includes(':') && lines[j] !== 'SpielerIn' && lines[j] !== 'Name') {
                   const catLine = lines[j].trim();
@@ -1412,10 +1678,6 @@ export default function App() {
           else if (line === 'Doppel-PartnerIn:' || line === 'Doppel-Partner:') {
               let partner = lines[i+1];
               if (partner && partner !== 'N/A' && !partner.includes('N/A')) {
-<<<<<<< HEAD
-=======
-                  // Assign to a Doppel category if one exists, otherwise to currentCategory
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                   let doppelCat = Object.keys(data.entries).find(c => c.toLowerCase().includes('doppel'));
                   if (doppelCat) {
                       data.entries[doppelCat].partner = partner;
@@ -1481,24 +1743,13 @@ export default function App() {
       let newParticipants = { ...participants };
       let newCategories = [...categories];
       
-<<<<<<< HEAD
       const normalizeCat = (c) => c.toLowerCase().replace(/[^a-z0-9öäüß]/g, '');
       
-=======
-      // Helper for robust matching
-      const normalizeCat = (c) => c.toLowerCase().replace(/[^a-z0-9öäüß]/g, '');
-      
-      // 1. Scan applications for new categories
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
       const appsCategories = new Set();
       Object.values(applications).forEach(app => {
           Object.keys(app.entries || {}).forEach(c => appsCategories.add(c));
       });
       
-<<<<<<< HEAD
-=======
-      // 2. Add any category that doesn't exist yet
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
       appsCategories.forEach(appCat => {
           const normalizedAppCat = normalizeCat(appCat);
           const exists = newCategories.some(existingCat => {
@@ -1517,30 +1768,16 @@ export default function App() {
           }
       });
 
-<<<<<<< HEAD
-=======
-      // Update Categories State if we found new ones
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
       if (newCategories.length > categories.length) {
           setCategories(newCategories);
       }
       
-<<<<<<< HEAD
-=======
-      // 3. Process all categories (old and new)
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
       newCategories.forEach(cat => {
           let pairs = new Set();
           let generatedNames = [];
           const normalizedTargetCat = normalizeCat(cat);
           
-          const normalizedTargetCat = normalizeCat(cat);
-          
           Object.values(applications).forEach(app => {
-<<<<<<< HEAD
-=======
-              // Find matching category in user application (ignoring hyphens/spaces)
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
               let entryKey = Object.keys(app.entries || {}).find(k => {
                   const normK = normalizeCat(k);
                   return normK === normalizedTargetCat || (normK === 'doppelmix' && normalizedTargetCat === 'mixed') || (normK === 'mixed' && normalizedTargetCat === 'mixed');
@@ -1554,32 +1791,18 @@ export default function App() {
                       let p1Raw = app.name.trim();
                       let p2Raw = partner.trim();
                       
-<<<<<<< HEAD
-=======
-                      // Remove (m), (f), (k) or (w) tags
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                       let p1Clean = p1Raw.replace(/\s*\([mfkw]\)/gi, '').trim();
                       let p2Clean = p2Raw.replace(/\s*\([mfkw]\)/gi, '').trim();
                       
                       let pairKey;
                       if (normalizedTargetCat === 'mixed' || normalizedTargetCat === 'doppelmix') {
-<<<<<<< HEAD
-=======
-                          // Check for female indicator or fallback to female first names
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                           let p1Female = /\([fw]\)/i.test(p1Raw) || FIRST_NAMES_F.includes(p1Clean.split(' ')[0]);
                           let p2Female = /\([fw]\)/i.test(p2Raw) || FIRST_NAMES_F.includes(p2Clean.split(' ')[0]);
                           
                           if (p2Female && !p1Female) {
-<<<<<<< HEAD
                               pairKey = `${p2Clean} / ${p1Clean}`; 
                           } else if (p1Female && !p2Female) {
                               pairKey = `${p1Clean} / ${p2Clean}`; 
-=======
-                              pairKey = `${p2Clean} / ${p1Clean}`; // Female first
-                          } else if (p1Female && !p2Female) {
-                              pairKey = `${p1Clean} / ${p2Clean}`; // Female first
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                           } else {
                               pairKey = [p1Clean, p2Clean].sort().join(' / ');
                           }
@@ -1592,10 +1815,6 @@ export default function App() {
                           generatedNames.push(pairKey);
                       }
                   } else {
-<<<<<<< HEAD
-=======
-                      // Single player: just strip the gender tag
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                       generatedNames.push(app.name.replace(/\s*\([mfkw]\)/gi, '').trim());
                   }
               }
@@ -1613,19 +1832,11 @@ export default function App() {
                    }
                });
 
-<<<<<<< HEAD
-=======
-               // Keep existing manual entries!
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                let finalLines = [...existingLines];
 
                generatedNames.forEach(name => {
                    const reversed = name.includes(' / ') ? name.split(' / ').reverse().join(' / ') : name;
                    
-<<<<<<< HEAD
-=======
-                   // Avoid adding duplicate players/teams
->>>>>>> 2fef77827d7a9ac69c4829db31bb9dd250bd529f
                    if (!existingNames.has(name) && !existingNames.has(reversed)) {
                        finalLines.push(name);
                    }
@@ -1780,10 +1991,6 @@ export default function App() {
     });
   };
 
-  const getParticipantsList = (category) => {
-    return participants[category]?.split('\n').map(p => p.trim()).filter(p => p.length > 0) || [];
-  };
-
   const handleUpdateResult = (matchId, score, winner) => {
     setMatchData(prevMatches => {
       let nextMatches = JSON.parse(JSON.stringify(prevMatches));
@@ -1795,14 +2002,13 @@ export default function App() {
       setTimeSlots(prevSlots => {
           const nextSlots = buildDynamicSchedule(nextMatches, prevSlots, numCourts, startTime, matchDuration, breakDuration, finalDuration, grandFinals, scheduleAllFinalsAtEnd, kinderCategories, kinderCourts, kinderShortFinals);
           
-          // Sofortige und gezielte Speicherung der neuen Ergebnisse in die Cloud!
           if (firebaseUser && (viewMode === 'spielleiter' || viewMode === 'manage')) {
               setIsSavingToCloud(true);
               const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentData', 'main');
               setDoc(docRef, {
                   __matchData: nextMatches,
                   __timeSlots: nextSlots
-              }, { merge: true }) // merge: true stellt sicher, dass wir Admin-Einstellungen nicht löschen
+              }, { merge: true }) 
               .catch(err => console.error("Cloud Save Error (Result):", err))
               .finally(() => setIsSavingToCloud(false));
           }
@@ -2066,10 +2272,10 @@ export default function App() {
 
   if (!isFirebaseInitialized) {
       return (
-          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-slate-100 w-full relative">
-             <Trophy className="w-16 h-16 text-teal-500 mb-6 animate-pulse" />
-             <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-             <p className="text-lg text-slate-400 font-medium">Lade Turnierdaten aus der Cloud...</p>
+          <div className="min-h-screen bg-black flex flex-col items-center justify-center p-8 text-white w-full relative">
+             <img src="TCW-Logo.png" alt="TC Wannweil Logo" className="w-24 h-24 mb-6 opacity-80 animate-pulse bg-white rounded-full p-1" onError={(e) => e.target.style.display='none'} />
+             <div className="w-8 h-8 border-4 border-[#7FB33C] border-t-transparent rounded-full animate-spin mb-4"></div>
+             <p className="text-lg text-zinc-400 font-medium">Lade Turnierdaten aus der Cloud...</p>
           </div>
       );
   }
@@ -2135,26 +2341,30 @@ export default function App() {
       />;
   }
 
+  if (showCertificates) {
+      return <CertificatesView categories={categories} tournamentStructures={tournamentStructures} matchData={matchData} onClose={() => setShowCertificates(false)} />;
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-teal-200 w-full">
-      <header className="bg-teal-700 text-white shadow-md print:hidden w-full">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-[#7FB33C]/30 w-full">
+      <header className="bg-black text-white shadow-md print:hidden w-full border-b-4 border-[#7FB33C]">
         <div className="w-full px-4 md:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <Trophy className="w-8 h-8 text-yellow-400" />
+            <img src="TCW-Logo.png" alt="TC Wannweil Logo" className="h-10 w-auto bg-white rounded-full p-0.5" onError={(e) => { e.target.onerror = null; e.target.outerHTML = '<div class="w-10 h-10 bg-white rounded-full flex items-center justify-center"><span class="text-black font-bold text-xs">TCW</span></div>'; }} />
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">TC Wannweil</h1>
-              <p className="text-teal-100 text-sm font-medium">Vereinsmeisterschaft - Turnierplaner</p>
+              <h1 className="text-2xl font-black tracking-tight uppercase" style={{fontFamily: "'Roboto', sans-serif"}}>TC Wannweil</h1>
+              <p className="text-[#7FB33C] text-sm font-medium">Vereinsmeisterschaft - Turnierplaner</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
-             <div className="hidden md:flex items-center gap-2 text-xs font-medium text-teal-200 bg-teal-800/50 px-3 py-1.5 rounded-full border border-teal-600/50">
+             <div className="hidden md:flex items-center gap-2 text-xs font-medium text-[#7FB33C] bg-zinc-900 px-3 py-1.5 rounded-full border border-[#7FB33C]/50">
                {isSavingToCloud ? <Cloud className="animate-pulse" size={14} /> : <Cloud size={14} />}
                {isSavingToCloud ? 'Speichert...' : 'Auto-Save Aktiv'}
              </div>
-             <button onClick={() => setViewMode('monitor')} className="flex items-center gap-2 bg-teal-800 hover:bg-teal-900 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-teal-600">
+             <button onClick={() => setViewMode('monitor')} className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-zinc-700">
                 <Monitor size={18} /> Monitor-Ansicht
              </button>
-             <button onClick={() => setLoginRole(null)} className="flex items-center gap-2 bg-teal-800 hover:bg-teal-900 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-teal-600">
+             <button onClick={() => setLoginRole(null)} className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-zinc-700">
                 <LogIn size={18} className="rotate-180" /> Logout
              </button>
           </div>
@@ -2165,7 +2375,7 @@ export default function App() {
         <div className="flex flex-wrap gap-2 mb-8 border-b border-slate-200 pb-2 print:hidden w-full">
           <TabButton active={activeTab === 'applications'} onClick={() => setActiveTab('applications')} icon={<Inbox size={18} />} label="Anmeldungen" />
           <TabButton active={activeTab === 'participants'} onClick={() => setActiveTab('participants')} icon={<Users size={18} />} label="Meldelisten" />
-          <TabButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings size={18} />} label="Einstellungen" />
+          <TabButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings size={18} />} label="Einstellungen & Planung" />
           <TabButton active={activeTab === 'schedule'} onClick={() => setActiveTab('schedule')} icon={<Calendar size={18} />} label="Spielplan" disabled={!timeSlots && !isGenerating} highlight={timeSlots !== null && activeTab === 'settings'} />
           <TabButton active={activeTab === 'brackets'} onClick={() => setActiveTab('brackets')} icon={<Grid size={18} />} label="Tabellen & Turnierbaum" disabled={!timeSlots && !isGenerating} />
         </div>
@@ -2175,8 +2385,8 @@ export default function App() {
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6 w-full">
               <div className="flex flex-col md:flex-row justify-between md:items-start mb-6 gap-4">
                 <div>
-                  <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
-                    <Inbox className="text-teal-600" /> E-Mail / Formular Anmeldungen
+                  <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-black">
+                    <Inbox className="text-[#5D7E2B]" /> E-Mail / Formular Anmeldungen
                   </h2>
                   <div className="text-slate-600 text-sm bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500 w-full">
                     <p className="mb-1">Kopieren Sie den Text aus den E-Mail-Anmeldungen in das Feld unten. Das System analysiert den Text und ordnet die Spieler automatisch zu.</p>
@@ -2186,10 +2396,10 @@ export default function App() {
 
                 <div className="flex items-center gap-2 shrink-0">
                   <input type="file" accept=".json" ref={appFileInputRef} onChange={handleImportApplications} className="hidden" />
-                  <button onClick={() => appFileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-teal-200" title="Anmeldungen importieren (.json)">
+                  <button onClick={() => appFileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-[#7FB33C]/10 text-slate-700 hover:text-[#5D7E2B] rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-[#7FB33C]/50" title="Anmeldungen importieren (.json)">
                     <Upload size={16} /> Importieren
                   </button>
-                  <button onClick={handleExportApplications} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-700 rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-teal-200" title="Anmeldungen exportieren (.json)">
+                  <button onClick={handleExportApplications} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-[#7FB33C]/10 text-slate-700 hover:text-[#5D7E2B] rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-[#7FB33C]/50" title="Anmeldungen exportieren (.json)">
                     <Download size={16} /> Exportieren
                   </button>
                 </div>
@@ -2199,20 +2409,20 @@ export default function App() {
                  <div className="w-full md:w-1/3 flex flex-col gap-3">
                     <label className="text-sm font-bold text-slate-700">Neue Anmeldung einfügen:</label>
                     <textarea 
-                        className="w-full h-72 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm font-mono resize-none bg-slate-50"
+                        className="w-full h-72 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#7FB33C] focus:border-[#7FB33C] text-sm font-mono resize-none bg-slate-50"
                         placeholder="Es gibt eine neue Anmeldung:&#10;SpielerIn&#10;Sylvia Van Buijtenen&#10;..."
                         value={rawAppInput}
                         onChange={(e) => setRawAppInput(e.target.value)}
                     />
-                    <button onClick={handleParseRawInput} disabled={!rawAppInput.trim()} className="bg-teal-600 hover:bg-teal-500 text-white py-3 rounded-lg font-bold transition-colors flex justify-center items-center gap-2 disabled:opacity-50">
-                        <Plus size={18} /> Anmeldung verarbeiten
+                    <button onClick={handleParseRawInput} disabled={!rawAppInput.trim()} className="bg-black hover:bg-zinc-800 text-white py-3 rounded-lg font-bold transition-colors flex justify-center items-center gap-2 disabled:opacity-50 border border-zinc-700">
+                        <Plus size={18} className="text-[#7FB33C]" /> Anmeldung verarbeiten
                     </button>
                  </div>
                  
                  <div className="w-full md:w-2/3 flex flex-col gap-3">
                     <div className="flex justify-between items-end mb-1">
                         <label className="text-sm font-bold text-slate-700">Erfasste Spieler ({Object.keys(applications).length})</label>
-                        <button onClick={transferToParticipants} disabled={Object.keys(applications).length === 0} className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm">
+                        <button onClick={transferToParticipants} disabled={Object.keys(applications).length === 0} className="bg-[#7FB33C] hover:bg-[#5D7E2B] text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm">
                             <ArrowRight size={16} /> Auf Meldelisten übertragen
                         </button>
                     </div>
@@ -2237,9 +2447,9 @@ export default function App() {
                                      <td className="p-3 text-slate-700">
                                         <div className="flex flex-wrap gap-1.5">
                                             {Object.entries(app.entries || {}).map(([cat, data], i) => (
-                                                <span key={i} className="bg-teal-50 text-teal-800 text-xs px-2.5 py-1 rounded-md border border-teal-100 flex items-center gap-1 font-medium">
+                                                <span key={i} className="bg-[#7FB33C]/10 text-[#5D7E2B] text-xs px-2.5 py-1 rounded-md border border-[#7FB33C]/30 flex items-center gap-1 font-medium">
                                                     {cat}
-                                                    {data.partner && <span className="text-teal-600 font-bold italic">(& {data.partner})</span>}
+                                                    {data.partner && <span className="font-bold italic">(& {data.partner})</span>}
                                                 </span>
                                             ))}
                                         </div>
@@ -2264,7 +2474,7 @@ export default function App() {
                        </table>
                     </div>
                     <div className="text-xs text-slate-500 text-right">
-                        <span className="font-bold text-teal-600">Hinweis:</span> Beim Übertragen auf die Meldelisten werden Doppel-Partner automatisch zusammengefügt (z.B. Spieler / Partner) und bestehende LKs (Spielstärken) beibehalten.
+                        <span className="font-bold text-[#5D7E2B]">Hinweis:</span> Beim Übertragen auf die Meldelisten werden Doppel-Partner automatisch zusammengefügt (z.B. Spieler / Partner) und bestehende LKs (Spielstärken) beibehalten.
                     </div>
                  </div>
               </div>
@@ -2277,8 +2487,8 @@ export default function App() {
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6 w-full">
               <div className="flex flex-col md:flex-row justify-between md:items-start mb-6 gap-4">
                 <div>
-                  <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
-                    <Users className="text-teal-600" /> Meldelisten
+                  <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-black">
+                    <Users className="text-[#5D7E2B]" /> Meldelisten
                   </h2>
                   <div className="text-slate-600 text-sm bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500 w-full">
                     <p className="mb-1">Tragen Sie die Teilnehmer (ein Name pro Zeile) ein. Für Doppel trennen Sie Partner mit einem Schrägstrich (z.B. <code>Max / Moritz</code>).</p>
@@ -2293,14 +2503,14 @@ export default function App() {
                     <div className="flex justify-between items-start mb-2 min-h-[28px]">
                       {editingCategory === cat ? (
                         <div className="flex items-center gap-1 w-full mr-2 mt-0.5">
-                           <input autoFocus value={editCategoryName} onChange={e => setEditCategoryName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveEditedCategory(cat); if (e.key === 'Escape') setEditingCategory(null); }} className="text-sm font-semibold text-slate-700 border-b border-teal-500 outline-none w-full bg-transparent py-0.5 px-1" />
-                           <button onClick={() => saveEditedCategory(cat)} className="text-teal-600 hover:bg-teal-50 p-1 rounded transition-colors"><Check size={14} /></button>
+                           <input autoFocus value={editCategoryName} onChange={e => setEditCategoryName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveEditedCategory(cat); if (e.key === 'Escape') setEditingCategory(null); }} className="text-sm font-semibold text-slate-700 border-b border-[#7FB33C] outline-none w-full bg-transparent py-0.5 px-1" />
+                           <button onClick={() => saveEditedCategory(cat)} className="text-[#5D7E2B] hover:bg-[#7FB33C]/10 p-1 rounded transition-colors"><Check size={14} /></button>
                            <button onClick={() => setEditingCategory(null)} className="text-slate-400 hover:bg-slate-100 p-1 rounded transition-colors"><X size={14} /></button>
                         </div>
                       ) : (
                         <>
                           <div className="flex flex-col gap-1.5 w-full overflow-hidden">
-                            <label className="text-sm font-semibold text-slate-700 truncate pr-2" title={cat}>{cat}</label>
+                            <label className="text-sm font-semibold text-black truncate pr-2" title={cat}>{cat}</label>
                             
                             <div className="flex flex-col gap-1 mb-1">
                                 <div className="flex gap-3 items-center">
@@ -2343,15 +2553,15 @@ export default function App() {
 
                                 <div className="flex flex-col gap-1.5 bg-slate-50/70 p-2 rounded border border-slate-100 mt-1">
                                     <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer hover:text-slate-900 transition-colors">
-                                        <input type="radio" name={`mode-${cat}`} checked={getMode(cat) === 'standard'} onChange={() => setCategoryMode(cat, 'standard')} className="w-3 h-3 text-teal-600 focus:ring-teal-500 cursor-pointer" />
+                                        <input type="radio" name={`mode-${cat}`} checked={getMode(cat) === 'standard'} onChange={() => setCategoryMode(cat, 'standard')} className="w-3 h-3 text-[#5D7E2B] focus:ring-[#7FB33C] cursor-pointer" />
                                         Gruppenphase + K.O.
                                     </label>
                                     <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer hover:text-slate-900 transition-colors">
-                                        <input type="radio" name={`mode-${cat}`} checked={getMode(cat) === 'group_only'} onChange={() => setCategoryMode(cat, 'group_only')} className="w-3 h-3 text-teal-600 focus:ring-teal-500 cursor-pointer" />
+                                        <input type="radio" name={`mode-${cat}`} checked={getMode(cat) === 'group_only'} onChange={() => setCategoryMode(cat, 'group_only')} className="w-3 h-3 text-[#5D7E2B] focus:ring-[#7FB33C] cursor-pointer" />
                                         Nur Gruppenphase
                                     </label>
                                     <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer hover:text-slate-900 transition-colors">
-                                        <input type="radio" name={`mode-${cat}`} checked={getMode(cat) === 'ko_only'} onChange={() => setCategoryMode(cat, 'ko_only')} className="w-3 h-3 text-teal-600 focus:ring-teal-500 cursor-pointer" />
+                                        <input type="radio" name={`mode-${cat}`} checked={getMode(cat) === 'ko_only'} onChange={() => setCategoryMode(cat, 'ko_only')} className="w-3 h-3 text-[#5D7E2B] focus:ring-[#7FB33C] cursor-pointer" />
                                         Nur K.O.
                                     </label>
                                 </div>
@@ -2362,7 +2572,7 @@ export default function App() {
                                         <select
                                             value={getGroupCount(cat)}
                                             onChange={(e) => setGroupCount(cat, e.target.value)}
-                                            className="text-[10px] p-0.5 border border-slate-200 rounded text-slate-700 bg-white focus:ring-1 focus:ring-teal-500 outline-none cursor-pointer w-20"
+                                            className="text-[10px] p-0.5 border border-slate-200 rounded text-slate-700 bg-white focus:ring-1 focus:ring-[#7FB33C] outline-none cursor-pointer w-20"
                                         >
                                             <option value="auto">Auto</option>
                                             <option value="1">1 Gruppe</option>
@@ -2378,14 +2588,14 @@ export default function App() {
                             </div>
                           </div>
                           <div className="flex items-center justify-end gap-1 shrink-0 mt-0.5">
-                            <button onClick={() => addRandomPlayer(cat)} className="text-[10px] bg-teal-50 text-teal-600 hover:bg-teal-100 border border-teal-200 px-2 py-1 rounded flex items-center gap-1 transition-colors" title="Zufälligen Spieler generieren"><Dices size={12} /> Zufall</button>
+                            <button onClick={() => addRandomPlayer(cat)} className="text-[10px] bg-[#7FB33C]/10 text-[#5D7E2B] hover:bg-[#7FB33C]/20 border border-[#7FB33C]/30 px-2 py-1 rounded flex items-center gap-1 transition-colors" title="Zufälligen Spieler generieren"><Dices size={12} /> Zufall</button>
                             <button onClick={() => { setEditingCategory(cat); setEditCategoryName(cat); }} className="text-[10px] bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 px-2 py-1 rounded flex items-center transition-colors" title="Umbenennen"><Edit2 size={12} /></button>
                             <button onClick={() => handleRemoveCategory(cat)} className="text-[10px] bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-2 py-1 rounded flex items-center transition-colors" title="Löschen"><Trash2 size={12} /></button>
                           </div>
                         </>
                       )}
                     </div>
-                    <textarea className="w-full h-32 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all text-sm resize-none" placeholder="Name, 5&#10;Name 2, 12&#10;..." value={participants[cat] || ''} onChange={(e) => handleParticipantChange(cat, e.target.value)} />
+                    <textarea className="w-full h-32 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#7FB33C] focus:border-[#7FB33C] transition-all text-sm resize-none" placeholder="Name, 5&#10;Name 2, 12&#10;..." value={participants[cat] || ''} onChange={(e) => handleParticipantChange(cat, e.target.value)} />
                     <div className="text-xs text-slate-500 mt-1 text-right">
                       {getParticipantsList(cat).length} {getParticipantsList(cat).length === 1 ? 'Meldung' : 'Meldungen'}
                     </div>
@@ -2396,15 +2606,15 @@ export default function App() {
               <div className="mt-8 pt-6 border-t border-slate-100 w-full">
                   <h3 className="text-sm font-bold text-slate-700 mb-3">Weitere Kategorie hinzufügen</h3>
                   <div className="flex items-center gap-2 max-w-sm">
-                      <input type="text" className="flex-1 p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="Name (z.B. Junioren U18)" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()} />
-                      <button onClick={handleAddCategory} disabled={!newCategoryName.trim()} className="bg-slate-200 hover:bg-teal-600 hover:text-white text-slate-700 px-3 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-1"><Plus size={16}/> Hinzufügen</button>
+                      <input type="text" className="flex-1 p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-[#7FB33C] focus:border-[#7FB33C]" placeholder="Name (z.B. Junioren U18)" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()} />
+                      <button onClick={handleAddCategory} disabled={!newCategoryName.trim()} className="bg-slate-200 hover:bg-black hover:text-[#7FB33C] text-slate-700 px-3 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-1"><Plus size={16}/> Hinzufügen</button>
                   </div>
               </div>
             </div>
 
             <div className="flex justify-end w-full">
-              <button onClick={() => setActiveTab('settings')} className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2">
-                Weiter zu den Einstellungen <ChevronRight size={18} />
+              <button onClick={() => setActiveTab('settings')} className="bg-black hover:bg-zinc-800 text-[#7FB33C] px-6 py-3 rounded-lg font-bold transition-colors flex items-center gap-2 border border-zinc-700 shadow-md">
+                Weiter zur Planung <ChevronRight size={18} />
               </button>
             </div>
           </div>
@@ -2412,15 +2622,146 @@ export default function App() {
 
         {activeTab === 'settings' && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
+            
+            {/* KI-Turnier-Planer & Simulation Panel */}
+            <div className="bg-black rounded-xl shadow-[0_10px_30px_rgba(127,179,60,0.15)] border-2 border-[#7FB33C] p-6 mb-8 text-white w-full">
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                       <h2 className="text-xl font-bold flex items-center gap-2 text-[#7FB33C] uppercase tracking-wide">
+                           <Wand2 size={24} /> KI-Turnier-Planer & Simulation
+                       </h2>
+                       <p className="text-sm text-zinc-400 mt-1 max-w-3xl">Der Simulator berechnet anhand Ihrer Meldelisten und Kapazitäten (Plätze & Zeiten) die optimale Turnierstruktur. Wählen Sie aus, welches Szenario am besten in Ihr Zeitfenster passt.</p>
+                    </div>
+                    <button onClick={() => setShowSimulator(!showSimulator)} className={`px-4 py-2 rounded-lg font-bold text-sm transition-colors border ${showSimulator ? 'bg-zinc-800 text-zinc-400 border-zinc-700' : 'bg-[#7FB33C] text-black border-[#5D7E2B] hover:bg-[#5D7E2B] hover:text-white'}`}>
+                        {showSimulator ? 'Simulator ausblenden' : 'Simulator öffnen'}
+                    </button>
+                </div>
+
+                {showSimulator && (
+                    <div className="mt-6 border-t border-zinc-800 pt-6 animate-in slide-in-from-top-4 duration-300">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-6 bg-zinc-900 p-4 rounded-lg border border-zinc-700 inline-flex">
+                            <label className="text-sm font-bold flex items-center gap-2 text-zinc-300"><Clock size={16} className="text-[#7FB33C]" /> Gewünschte Maximal-Dauer:</label>
+                            <div className="flex items-center gap-2">
+                                <input type="number" min="1" max="72" value={targetHours} onChange={e => setTargetHours(Number(e.target.value))} className="bg-black border-2 border-zinc-700 text-white font-black text-center rounded-lg px-3 py-1.5 w-20 focus:border-[#7FB33C] outline-none" />
+                                <span className="text-zinc-400 font-medium">Stunden</span>
+                            </div>
+                        </div>
+
+                        {simResults && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {/* Card: Aktuell */}
+                                <div className={`p-5 rounded-xl border-2 flex flex-col ${isCurrentScenario(simResults.current.modes, simResults.current.groups) ? 'border-[#7FB33C] bg-[#7FB33C]/10 shadow-[0_0_15px_rgba(127,179,60,0.2)]' : 'border-zinc-800 bg-zinc-900'}`}>
+                                    <h3 className="font-bold flex items-center gap-2 mb-3 text-white"><Settings size={18} className="text-zinc-400"/> Aktuelle Auswahl</h3>
+                                    <div className="text-3xl font-black text-[#7FB33C] mb-1">{simResults.current.stats.durationFormatted}</div>
+                                    <div className="text-xs text-zinc-400 mb-6 font-medium">Ende ca. {simResults.current.stats.endTimeStr}</div>
+                                    
+                                    <div className="space-y-2 text-sm text-zinc-300 mb-6 flex-1">
+                                        <div className="flex justify-between items-center border-b border-zinc-800 pb-1"><span>Spiele gesamt:</span> <strong className="text-white">{simResults.current.stats.totalMatches}</strong></div>
+                                        <div className="flex justify-between items-center border-b border-zinc-800 pb-1"><span>Vorrunden:</span> <strong className="text-white">{simResults.current.stats.regularMatches}</strong></div>
+                                        <div className="flex justify-between items-center"><span>Finals:</span> <strong className="text-white">{simResults.current.stats.finalMatches}</strong></div>
+                                    </div>
+                                    
+                                    <div className="text-xs text-zinc-500 mb-4 h-10 flex items-center justify-center italic text-center">
+                                        Entspricht Ihren derzeitigen Einstellungen.
+                                    </div>
+                                    
+                                    <button disabled={true} className="w-full py-2.5 rounded-lg font-bold text-sm bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700">Aktiv</button>
+                                </div>
+
+                                {/* Card: Optimiert */}
+                                <div className={`p-5 rounded-xl border-2 flex flex-col ${isCurrentScenario(simResults.opt.modes, simResults.opt.groups) ? 'border-[#7FB33C] bg-[#7FB33C]/10 shadow-[0_0_15px_rgba(127,179,60,0.2)]' : 'border-blue-900/50 bg-zinc-900'}`}>
+                                    <h3 className="font-bold flex items-center gap-2 mb-3 text-white"><Target size={18} className="text-blue-400"/> Ziel-Zeit Optimiert</h3>
+                                    <div className="text-3xl font-black text-blue-400 mb-1">{simResults.opt.stats.durationFormatted}</div>
+                                    <div className="text-xs text-zinc-400 mb-6 font-medium">Ende ca. {simResults.opt.stats.endTimeStr}</div>
+                                    
+                                    <div className="space-y-2 text-sm text-zinc-300 mb-6 flex-1">
+                                        <div className="flex justify-between items-center border-b border-zinc-800 pb-1"><span>Spiele gesamt:</span> <strong className="text-white">{simResults.opt.stats.totalMatches}</strong></div>
+                                        <div className="flex justify-between items-center border-b border-zinc-800 pb-1"><span>Vorrunden:</span> <strong className="text-white">{simResults.opt.stats.regularMatches}</strong></div>
+                                        <div className="flex justify-between items-center"><span>Finals:</span> <strong className="text-white">{simResults.opt.stats.finalMatches}</strong></div>
+                                    </div>
+                                    
+                                    <div className="text-xs text-blue-300/70 mb-4 h-10 flex items-center justify-center text-center px-2">
+                                        Große Felder wurden auf K.O. gesetzt, bis {targetHours}h erreicht sind.
+                                    </div>
+                                    
+                                    <button 
+                                       disabled={isCurrentScenario(simResults.opt.modes, simResults.opt.groups)}
+                                       onClick={() => applyScenario(simResults.opt)}
+                                       className={`w-full py-2.5 rounded-lg font-bold text-sm transition-colors border ${isCurrentScenario(simResults.opt.modes, simResults.opt.groups) ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border-zinc-700' : 'bg-blue-600 hover:bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-900/50'}`}
+                                    >
+                                       {isCurrentScenario(simResults.opt.modes, simResults.opt.groups) ? 'Aktiv' : 'Anwenden'}
+                                    </button>
+                                </div>
+
+                                {/* Card: Ausgewogen */}
+                                <div className={`p-5 rounded-xl border-2 flex flex-col ${isCurrentScenario(simResults.bal.modes, simResults.bal.groups) ? 'border-[#7FB33C] bg-[#7FB33C]/10 shadow-[0_0_15px_rgba(127,179,60,0.2)]' : 'border-purple-900/50 bg-zinc-900'}`}>
+                                    <h3 className="font-bold flex items-center gap-2 mb-3 text-white"><Scale size={18} className="text-purple-400"/> Ausgewogen</h3>
+                                    <div className="text-3xl font-black text-purple-400 mb-1">{simResults.bal.stats.durationFormatted}</div>
+                                    <div className="text-xs text-zinc-400 mb-6 font-medium">Ende ca. {simResults.bal.stats.endTimeStr}</div>
+                                    
+                                    <div className="space-y-2 text-sm text-zinc-300 mb-6 flex-1">
+                                        <div className="flex justify-between items-center border-b border-zinc-800 pb-1"><span>Spiele gesamt:</span> <strong className="text-white">{simResults.bal.stats.totalMatches}</strong></div>
+                                        <div className="flex justify-between items-center border-b border-zinc-800 pb-1"><span>Vorrunden:</span> <strong className="text-white">{simResults.bal.stats.regularMatches}</strong></div>
+                                        <div className="flex justify-between items-center"><span>Finals:</span> <strong className="text-white">{simResults.bal.stats.finalMatches}</strong></div>
+                                    </div>
+                                    
+                                    <div className="text-xs text-purple-300/70 mb-4 h-10 flex items-center justify-center text-center px-2">
+                                        Gruppen für &lt; 8 Spieler.<br/>K.O. ab 8 Spielern.
+                                    </div>
+                                    
+                                    <button 
+                                       disabled={isCurrentScenario(simResults.bal.modes, simResults.bal.groups)}
+                                       onClick={() => applyScenario(simResults.bal)}
+                                       className={`w-full py-2.5 rounded-lg font-bold text-sm transition-colors border ${isCurrentScenario(simResults.bal.modes, simResults.bal.groups) ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border-zinc-700' : 'bg-purple-600 hover:bg-purple-500 text-white border-purple-500 shadow-md shadow-purple-900/50'}`}
+                                    >
+                                       {isCurrentScenario(simResults.bal.modes, simResults.bal.groups) ? 'Aktiv' : 'Anwenden'}
+                                    </button>
+                                </div>
+
+                                {/* Card: Kompakt */}
+                                <div className={`p-5 rounded-xl border-2 flex flex-col ${isCurrentScenario(simResults.min.modes, simResults.min.groups) ? 'border-[#7FB33C] bg-[#7FB33C]/10 shadow-[0_0_15px_rgba(127,179,60,0.2)]' : 'border-orange-900/50 bg-zinc-900'}`}>
+                                    <h3 className="font-bold flex items-center gap-2 mb-3 text-white"><Zap size={18} className="text-orange-400"/> Kompakt</h3>
+                                    <div className="text-3xl font-black text-orange-400 mb-1">{simResults.min.stats.durationFormatted}</div>
+                                    <div className="text-xs text-zinc-400 mb-6 font-medium">Ende ca. {simResults.min.stats.endTimeStr}</div>
+                                    
+                                    <div className="space-y-2 text-sm text-zinc-300 mb-6 flex-1">
+                                        <div className="flex justify-between items-center border-b border-zinc-800 pb-1"><span>Spiele gesamt:</span> <strong className="text-white">{simResults.min.stats.totalMatches}</strong></div>
+                                        <div className="flex justify-between items-center border-b border-zinc-800 pb-1"><span>Vorrunden:</span> <strong className="text-white">{simResults.min.stats.regularMatches}</strong></div>
+                                        <div className="flex justify-between items-center"><span>Finals:</span> <strong className="text-white">{simResults.min.stats.finalMatches}</strong></div>
+                                    </div>
+                                    
+                                    <div className="text-xs text-orange-300/70 mb-4 h-10 flex items-center justify-center text-center px-2">
+                                        Das schnellste Turnier. Alle spielen reines K.O. System.
+                                    </div>
+                                    
+                                    <button 
+                                       disabled={isCurrentScenario(simResults.min.modes, simResults.min.groups)}
+                                       onClick={() => applyScenario(simResults.min)}
+                                       className={`w-full py-2.5 rounded-lg font-bold text-sm transition-colors border ${isCurrentScenario(simResults.min.modes, simResults.min.groups) ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border-zinc-700' : 'bg-orange-600 hover:bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-900/50'}`}
+                                    >
+                                       {isCurrentScenario(simResults.min.modes, simResults.min.groups) ? 'Aktiv' : 'Anwenden'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        
+                        <div className="mt-4 flex gap-2 items-center text-xs text-zinc-500 bg-zinc-900 p-3 rounded border border-zinc-800">
+                            <Info size={16} className="text-[#7FB33C] shrink-0" />
+                            <p>Die Berechnungen enthalten automatisch einen 15% Puffer für Wechselzeiten und Lücken in der Platzbelegung. Ändern Sie Startzeit, Spiellängen oder Platzanzahl in den Einstellungen unten, um die Simulation anzupassen.</p>
+                        </div>
+                    </div>
+                )}
+            </div>
+
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 w-full">
-              <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                <Settings className="text-teal-600" /> Turniereinstellungen
+              <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-black">
+                <Settings className="text-[#5D7E2B]" /> Turniereinstellungen
               </h2>
               
               <div className="space-y-6 w-full">
                 <div className="bg-slate-100 p-4 rounded-lg flex flex-col md:flex-row gap-4 items-start md:items-center w-full">
                     <label className="flex items-center gap-2 font-semibold text-slate-800 cursor-pointer shrink-0">
-                        <input type="checkbox" checked={scheduleAllFinalsAtEnd} onChange={e => setScheduleAllFinalsAtEnd(e.target.checked)} className="w-5 h-5 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer" />
+                        <input type="checkbox" checked={scheduleAllFinalsAtEnd} onChange={e => setScheduleAllFinalsAtEnd(e.target.checked)} className="w-5 h-5 text-[#5D7E2B] rounded border-slate-300 focus:ring-[#7FB33C] cursor-pointer" />
                         Alle Finals am Ende spielen
                     </label>
                     <div className="text-sm text-slate-500 md:ml-4">Plant alle Endspiele gesammelt ganz am Ende des Turniers ein. (Ausnahme: Kinder-Finals mit aktiver "Vorrunden-Zeit" Einstellung).</div>
@@ -2429,31 +2770,31 @@ export default function App() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Turnierbeginn</label>
-                    <input type="time" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                    <input type="time" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#7FB33C] focus:border-[#7FB33C] font-mono text-center" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Anzahl Plätze</label>
-                    <input type="number" min="1" max="20" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500" value={numCourts} onChange={(e) => setNumCourts(parseInt(e.target.value) || 1)} />
+                    <input type="number" min="1" max="20" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#7FB33C] focus:border-[#7FB33C] font-mono text-center" value={numCourts} onChange={(e) => setNumCourts(parseInt(e.target.value) || 1)} />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Spielzeit Vorrunde (Min)</label>
-                    <input type="number" min="10" max="120" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500" value={matchDuration} onChange={(e) => setMatchDuration(parseInt(e.target.value) || 30)} />
+                    <input type="number" min="10" max="120" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#7FB33C] focus:border-[#7FB33C] font-mono text-center" value={matchDuration} onChange={(e) => setMatchDuration(parseInt(e.target.value) || 30)} />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Pausenzeit (Min)</label>
-                    <input type="number" min="0" max="60" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500" value={breakDuration} onChange={(e) => setBreakDuration(parseInt(e.target.value) || 0)} />
+                    <input type="number" min="0" max="60" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#7FB33C] focus:border-[#7FB33C] font-mono text-center" value={breakDuration} onChange={(e) => setBreakDuration(parseInt(e.target.value) || 0)} />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Spielzeit Finale (Min)</label>
-                    <input type="number" min="30" max="180" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500" value={finalDuration} onChange={(e) => setFinalDuration(parseInt(e.target.value) || 90)} />
+                    <input type="number" min="30" max="180" className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#7FB33C] focus:border-[#7FB33C] font-mono text-center" value={finalDuration} onChange={(e) => setFinalDuration(parseInt(e.target.value) || 90)} />
                   </div>
                 </div>
               </div>
 
               <div className="mt-8 border-t border-slate-100 pt-6 flex justify-between w-full">
-                <button onClick={() => setActiveTab('participants')} className="text-slate-600 hover:text-slate-900 px-4 py-2 font-medium transition-colors">Zurück</button>
-                <button onClick={generateSchedule} disabled={isGenerating} className="bg-teal-600 hover:bg-teal-500 text-white px-8 py-3 rounded-lg font-bold transition-all shadow-md hover:shadow-lg flex items-center gap-2 disabled:opacity-70">
-                  {isGenerating ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Berechne...</> : <><Play size={18} fill="currentColor" /> Spielplan Generieren</>}
+                <button onClick={() => setActiveTab('participants')} className="text-slate-600 hover:text-black px-4 py-2 font-medium transition-colors">Zurück</button>
+                <button onClick={generateSchedule} disabled={isGenerating} className="bg-[#7FB33C] hover:bg-[#5D7E2B] text-white px-8 py-3 rounded-lg font-bold transition-all shadow-md hover:shadow-lg flex items-center gap-2 disabled:opacity-70 text-lg uppercase tracking-wide">
+                  {isGenerating ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Berechne...</> : <><Play size={20} fill="currentColor" /> Spielplan Generieren</>}
                 </button>
               </div>
             </div>
@@ -2463,11 +2804,11 @@ export default function App() {
         {activeTab === 'schedule' && timeSlots && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
             <div className="flex justify-between items-center mb-6 print:hidden w-full">
-               <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                 <Calendar className="text-teal-600" /> Offizieller Spielplan
+               <h2 className="text-2xl font-bold text-black flex items-center gap-2">
+                 <Calendar className="text-[#5D7E2B]" /> Offizieller Spielplan
                </h2>
                <div className="flex gap-2">
-                   <button onClick={() => setViewMode('monitor')} className="bg-teal-100 hover:bg-teal-200 text-teal-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                   <button onClick={() => setViewMode('monitor')} className="bg-[#7FB33C]/20 hover:bg-[#7FB33C]/30 text-[#5D7E2B] px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2">
                      <Monitor size={16} /> Monitor
                    </button>
                    <button onClick={() => window.print()} className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors hidden md:block">
@@ -2477,7 +2818,7 @@ export default function App() {
             </div>
 
             <div className="hidden print:block w-full">
-                <h2 className="text-2xl font-bold text-slate-800 mb-4 border-b border-slate-300 pb-2">Spielplan - Vereinsmeisterschaft</h2>
+                <h2 className="text-2xl font-bold text-black mb-4 border-b border-slate-300 pb-2 uppercase tracking-wide" style={{fontFamily: "'Roboto', sans-serif"}}>Spielplan - TC Wannweil Vereinsmeisterschaft</h2>
                 <table className="w-full text-left text-sm border-collapse border border-slate-300">
                     <thead>
                         <tr className="bg-slate-200 print:bg-slate-200">
@@ -2510,14 +2851,14 @@ export default function App() {
 
             <div className="space-y-6 pb-20 print:hidden w-full">
               {timeSlots.map((slot, index) => (
-                <div key={index} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden w-full">
-                  <div className={`px-4 py-3 border-b flex items-center justify-between ${slot.slotType === 'final' ? 'bg-amber-100 border-amber-200' : 'bg-slate-100 border-slate-200'}`}>
+                <div key={index} className="bg-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.05)] border border-slate-200 overflow-hidden w-full">
+                  <div className={`px-4 py-3 border-b flex items-center justify-between ${slot.slotType === 'final' ? 'bg-[#7FB33C]/10 border-[#7FB33C]/30' : 'bg-slate-100 border-slate-200'}`}>
                     <div className="flex items-center gap-2 font-bold text-lg text-slate-800">
-                      <Clock size={20} className={slot.slotType === 'final' ? 'text-amber-600' : 'text-slate-500'} />
+                      <Clock size={20} className={slot.slotType === 'final' ? 'text-[#5D7E2B]' : 'text-slate-500'} />
                       {slot.time || ''} - {slot.endTime || ''} Uhr
                     </div>
                     {slot.slotType === 'final' && (
-                      <span className="bg-amber-500 text-white text-xs px-2 py-1 rounded font-bold uppercase tracking-wider flex items-center gap-1"><Trophy size={12} /> Finals</span>
+                      <span className="bg-[#7FB33C] text-white text-xs px-2 py-1 rounded font-bold uppercase tracking-wider flex items-center gap-1"><Trophy size={12} /> Finals</span>
                     )}
                   </div>
 
@@ -2544,8 +2885,15 @@ export default function App() {
         {activeTab === 'brackets' && tournamentStructures && (
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full">
             <div className="flex justify-between items-center mb-6 print:hidden w-full">
-               <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Grid className="text-teal-600" /> Tabellen & Turnierbaum</h2>
-               <button onClick={() => window.print()} className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors hidden md:block print:hidden">Drucken</button>
+               <h2 className="text-2xl font-bold text-black flex items-center gap-2"><Grid className="text-[#5D7E2B]" /> Tabellen & Turnierbaum</h2>
+               <div className="flex gap-2">
+                   <button onClick={() => setShowCertificates(true)} className="bg-[#7FB33C] hover:bg-[#5D7E2B] text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors hidden md:flex items-center gap-2 print:hidden shadow-sm">
+                       <Award size={16} /> Urkunden Drucken
+                   </button>
+                   <button onClick={() => window.print()} className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors hidden md:block print:hidden">
+                       Plan Drucken
+                   </button>
+               </div>
             </div>
 
             <BracketsView categories={categories} tournamentStructures={tournamentStructures} matchData={matchData} />
@@ -2558,7 +2906,7 @@ export default function App() {
 
 function TabButton({ active, onClick, icon, label, disabled, highlight }) {
   return (
-    <button onClick={onClick} disabled={disabled} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all ${active ? 'bg-teal-600 text-white shadow-md' : 'bg-transparent text-slate-600 hover:bg-slate-100'} ${disabled ? 'opacity-50 cursor-not-allowed hover:bg-transparent' : ''} ${highlight && !active ? 'ring-2 ring-teal-500 ring-offset-1 text-teal-700 bg-teal-50' : ''}`}>
+    <button onClick={onClick} disabled={disabled} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all ${active ? 'bg-black text-[#7FB33C] shadow-md border-b-2 border-[#7FB33C]' : 'bg-transparent text-slate-600 hover:bg-slate-200'} ${disabled ? 'opacity-50 cursor-not-allowed hover:bg-transparent' : ''} ${highlight && !active ? 'ring-2 ring-[#7FB33C] ring-offset-1 text-[#5D7E2B] bg-[#7FB33C]/10' : ''}`}>
       {icon} {label}
     </button>
   );
@@ -2603,22 +2951,22 @@ function MatchCard({ match, onSaveResult, onManualTimeChange }) {
   if (match.score === 'Freilos') return null;
 
   return (
-    <div className={`border rounded-lg p-3 relative flex flex-col h-full w-full ${match.isFinal ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-white shadow-sm'}`}>
-      <div className="text-xs font-semibold text-teal-600 mb-1 flex justify-between items-center">
+    <div className={`border rounded-lg p-3 relative flex flex-col h-full w-full ${match.isFinal ? 'border-[#7FB33C]/40 bg-[#7FB33C]/5' : 'border-slate-200 bg-white shadow-sm'}`}>
+      <div className="text-xs font-bold text-[#5D7E2B] mb-1 flex justify-between items-center">
         <span className="break-words pr-2">{match.category || ''}</span>
-        <span className="text-slate-400 font-normal whitespace-nowrap">Platz {match.court || 1}</span>
+        <span className="text-slate-400 font-medium whitespace-nowrap bg-slate-100 px-1.5 rounded">Platz {match.court || 1}</span>
       </div>
       
       {!match.isFinal && <div className="text-xs text-slate-500 mb-2 uppercase tracking-wide font-bold">{match.type || ''} {match.name && `- ${match.name}`}</div>}
-      {match.isFinal && <div className="text-xs text-amber-600 mb-2 uppercase tracking-wide font-bold flex items-center gap-1"><Trophy size={12}/> {match.type || 'Finale'}</div>}
+      {match.isFinal && <div className="text-xs text-[#5D7E2B] mb-2 uppercase tracking-wide font-black flex items-center gap-1"><Trophy size={12}/> {match.type || 'Finale'}</div>}
 
       <div className="flex flex-col gap-2 flex-grow">
-        <div className={`font-medium text-sm flex items-start gap-2 ${match.winner === match.player1 ? 'text-teal-700 font-bold' : 'text-slate-700'}`}>
+        <div className={`font-medium text-sm flex items-start gap-2 ${match.winner === match.player1 ? 'text-[#5D7E2B] font-bold' : 'text-slate-700'}`}>
           <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 flex-shrink-0 mt-0.5">1</span>
           <span className="break-words">{match.player1 || ''}</span>
         </div>
         <div className="text-[10px] text-slate-300 text-center font-serif italic my-[-4px]">vs</div>
-        <div className={`font-medium text-sm flex items-start gap-2 ${match.winner === match.player2 ? 'text-teal-700 font-bold' : 'text-slate-700'}`}>
+        <div className={`font-medium text-sm flex items-start gap-2 ${match.winner === match.player2 ? 'text-[#5D7E2B] font-bold' : 'text-slate-700'}`}>
           <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 flex-shrink-0 mt-0.5">2</span>
           <span className="break-words">{match.player2 || ''}</span>
         </div>
@@ -2629,20 +2977,20 @@ function MatchCard({ match, onSaveResult, onManualTimeChange }) {
           !isEditing && match.winner ? (
             <div className="flex justify-between items-center bg-slate-50 p-2 rounded border border-slate-100">
               <div className="text-sm font-bold text-slate-800">{match.score || ''}</div>
-              <button onClick={() => setIsEditing(true)} className="text-slate-400 hover:text-teal-600 transition-colors p-1" title="Ergebnis bearbeiten"><Edit2 size={14} /></button>
+              <button onClick={() => setIsEditing(true)} className="text-slate-400 hover:text-[#5D7E2B] transition-colors p-1" title="Ergebnis bearbeiten"><Edit2 size={14} /></button>
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <input type="text" placeholder={match.isFinal ? "Sätze (z.B. 6:4, 6:2)" : "Ergebnis (z.B. 10:5)"} className="w-full text-xs p-2 border border-slate-200 rounded focus:ring-1 focus:ring-teal-500 outline-none" value={scoreInput} onChange={handleScoreChange} />
+              <input type="text" placeholder={match.isFinal ? "Sätze (z.B. 6:4, 6:2)" : "Ergebnis (z.B. 10:5)"} className="w-full text-xs p-2 border border-slate-200 rounded focus:ring-1 focus:ring-[#7FB33C] outline-none font-bold text-center" value={scoreInput} onChange={handleScoreChange} />
               
               {match.isFinal ? (
                  <div className="flex gap-1">
-                    <button onClick={() => setWinnerInput(match.player1)} className={`flex-1 text-[10px] py-1.5 rounded border transition-colors px-1 ${winnerInput === match.player1 ? 'bg-amber-500 text-white border-amber-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>Sieg P1</button>
-                    <button onClick={() => setWinnerInput(match.player2)} className={`flex-1 text-[10px] py-1.5 rounded border transition-colors px-1 ${winnerInput === match.player2 ? 'bg-amber-500 text-white border-amber-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>Sieg P2</button>
-                    <button onClick={handleSave} disabled={!winnerInput} className="bg-slate-800 text-white px-2 rounded hover:bg-slate-700 disabled:opacity-50 flex items-center"><Check size={14} /></button>
+                    <button onClick={() => setWinnerInput(match.player1)} className={`flex-1 text-[10px] py-1.5 rounded border transition-colors px-1 font-bold ${winnerInput === match.player1 ? 'bg-[#7FB33C] text-white border-[#5D7E2B]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>Sieg P1</button>
+                    <button onClick={() => setWinnerInput(match.player2)} className={`flex-1 text-[10px] py-1.5 rounded border transition-colors px-1 font-bold ${winnerInput === match.player2 ? 'bg-[#7FB33C] text-white border-[#5D7E2B]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>Sieg P2</button>
+                    <button onClick={handleSave} disabled={!winnerInput} className="bg-black text-[#7FB33C] px-2 rounded hover:bg-zinc-800 disabled:opacity-50 flex items-center"><Check size={14} /></button>
                  </div>
               ) : (
-                 <button onClick={handleSave} disabled={!winnerInput} className="w-full bg-slate-800 text-white text-xs py-2 rounded hover:bg-slate-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1"><Check size={14} /> Speichern</button>
+                 <button onClick={handleSave} disabled={!winnerInput} className="w-full bg-black text-[#7FB33C] text-xs py-2 rounded hover:bg-zinc-800 disabled:opacity-50 transition-colors flex items-center justify-center gap-1 font-bold"><Check size={14} /> Speichern</button>
               )}
             </div>
           )
@@ -2654,8 +3002,8 @@ function MatchCard({ match, onSaveResult, onManualTimeChange }) {
 
         {match.isFinal && (
           <div className="mt-1 pt-2 border-t border-amber-200/50 flex justify-between items-center print:hidden">
-             <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1"><Clock size={10} /> Startzeit:</span>
-             <input type="time" value={match.manualTime || ''} onChange={(e) => onManualTimeChange(match.id, e.target.value || null)} className="text-xs px-1.5 py-0.5 border border-amber-300 rounded bg-amber-50 text-amber-900 outline-none focus:ring-1 focus:ring-amber-500" />
+             <span className="text-[10px] text-[#5D7E2B] font-semibold flex items-center gap-1"><Clock size={10} /> Startzeit:</span>
+             <input type="time" value={match.manualTime || ''} onChange={(e) => onManualTimeChange(match.id, e.target.value || null)} className="text-xs px-1.5 py-0.5 border border-[#7FB33C]/50 rounded bg-white text-black outline-none focus:ring-1 focus:ring-[#7FB33C]" />
           </div>
         )}
       </div>
