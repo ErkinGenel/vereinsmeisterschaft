@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, Settings, Trophy, Clock, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X, Monitor, LogIn, Lock, Cloud, Inbox, ArrowRight, Printer, ChevronLeft, Award, Wand2, Zap, Scale, Target, Activity, Info } from 'lucide-react';
+import { Calendar, Users, Settings, Trophy, Clock, Play, ChevronRight, Grid, Dices, Edit2, Check, Download, Upload, Plus, Trash2, X, Monitor, LogIn, Lock, Cloud, Inbox, ArrowRight, Printer, ChevronLeft, Award, Wand2, Zap, Scale, Target, Activity, Info, FileText } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
@@ -470,7 +470,7 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
         slot.courts.forEach((id, idx) => {
             if(id && matches[id]) matches[id].court = idx + 1;
         });
-        if (slot.activePlayers) delete slot.activePlayers; // CRITICAL: Fixes Firebase error on Set()
+        if (slot.activePlayers) delete slot.activePlayers; 
     });
 
     finalSlots = applyTimesToSlots(finalSlots, matches, startTime, matchDuration, breakDuration, finalDuration, kinderShortFinals);
@@ -581,17 +581,14 @@ function CertificatesView({ categories, tournamentStructures, matchData, onClose
                 {certificates.map((cert, idx) => (
                     <div key={idx} className="w-[210mm] h-[296mm] bg-white mx-auto print:m-0 print:shadow-none shadow-xl border-[16px] border-[#7FB33C] flex flex-col relative overflow-hidden" style={{ pageBreakAfter: 'always', boxSizing: 'border-box' }}>
                         
-                        {/* Background Decor */}
                         <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#7FB33C]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
                         <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[#7FB33C]/5 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none"></div>
                         
-                        {/* Header with Logos */}
                         <div className="flex justify-between items-start p-16 pb-8 relative z-10">
                             <img src="TCW-Logo.png" alt="TC Wannweil" className="w-40 h-40 object-contain" onError={(e) => e.target.style.display='none'} />
                             <img src="50JahreLogo3.jpg" alt="50 Jahre" className="w-40 h-40 object-contain rounded-full border-4 border-white shadow-sm" onError={(e) => e.target.style.display='none'} />
                         </div>
 
-                        {/* Certificate Content */}
                         <div className="flex-1 flex flex-col items-center justify-center px-16 text-center relative z-10">
                             <h1 className="text-7xl font-black text-black uppercase tracking-[0.2em] mb-6" style={{fontFamily: "'Roboto', sans-serif"}}>Urkunde</h1>
                             <h2 className="text-3xl font-bold text-[#5D7E2B] uppercase tracking-widest mb-16 border-b-2 border-[#7FB33C]/30 pb-4 inline-block px-8">Vereinsmeisterschaft 2026</h2>
@@ -606,7 +603,6 @@ function CertificatesView({ categories, tournamentStructures, matchData, onClose
                             <div className="text-5xl font-black text-black border-b-4 border-[#7FB33C] pb-4 min-w-[400px] inline-block mt-4">{cert.name}</div>
                         </div>
 
-                        {/* Footer Signatures */}
                         <div className="p-16 flex justify-between items-end w-full relative z-10">
                             <div className="text-center">
                                 <div className="text-xl font-bold text-black mb-1">Wannweil, im September 2026</div>
@@ -619,6 +615,155 @@ function CertificatesView({ categories, tournamentStructures, matchData, onClose
                         </div>
                     </div>
                 ))}
+            </div>
+        </div>
+    );
+}
+
+function ParticipantListView({ applications, onClose }) {
+    // Process all unique players and partners
+    const allPlayersMap = new Map();
+
+    const addPlayer = (name, gender, partnerInfo = {}) => {
+        if (!name || name === 'N/A') return;
+        const cleanName = name.replace(/\s*\([mfk]\)/i, '').trim();
+        
+        let derivedGender = gender;
+        if (!derivedGender) {
+            const match = name.match(/\(([mfk])\)/i);
+            if (match) {
+                derivedGender = match[1].toLowerCase();
+            } else {
+                const firstName = cleanName.split(' ')[0];
+                if (FIRST_NAMES_F.includes(firstName)) derivedGender = 'f';
+                else if (FIRST_NAMES_M.includes(firstName)) derivedGender = 'm';
+                else derivedGender = '-';
+            }
+        }
+
+        if (!allPlayersMap.has(cleanName)) {
+            allPlayersMap.set(cleanName, {
+                name: cleanName,
+                gender: derivedGender,
+                doppelPartner: partnerInfo.doppelPartner || '-',
+                mixedPartner: partnerInfo.mixedPartner || '-',
+                spieltEinzel: partnerInfo.spieltEinzel || false
+            });
+        } else {
+            const existing = allPlayersMap.get(cleanName);
+            if (partnerInfo.doppelPartner && existing.doppelPartner === '-') existing.doppelPartner = partnerInfo.doppelPartner;
+            if (partnerInfo.mixedPartner && existing.mixedPartner === '-') existing.mixedPartner = partnerInfo.mixedPartner;
+            if (partnerInfo.spieltEinzel) existing.spieltEinzel = true;
+            if (existing.gender === '-' && derivedGender !== '-') existing.gender = derivedGender;
+        }
+    };
+
+    Object.values(applications).forEach(app => {
+        let doppelPartner = '-';
+        let mixedPartner = '-';
+        let spieltEinzel = false;
+
+        Object.entries(app.entries || {}).forEach(([cat, data]) => {
+            if (cat.endsWith('_partner')) return; // Ignore partner keys
+            
+            if (cat.toLowerCase().includes('einzel')) {
+                spieltEinzel = true;
+            }
+
+            if (data.partner && data.partner !== 'N/A') {
+                const partnerClean = data.partner.replace(/\s*\([mfk]\)/i, '').trim();
+                if (cat.toLowerCase().includes('doppel-mix') || cat.toLowerCase() === 'mixed') {
+                    mixedPartner = partnerClean;
+                } else if (cat.toLowerCase().includes('doppel')) {
+                    doppelPartner = partnerClean;
+                }
+            }
+        });
+
+        addPlayer(app.name, app.gender, { doppelPartner, mixedPartner, spieltEinzel });
+    });
+
+    Object.values(applications).forEach(app => {
+        const appCleanName = app.name.replace(/\s*\([mfk]\)/i, '').trim();
+        Object.entries(app.entries || {}).forEach(([cat, data]) => {
+            if (cat.endsWith('_partner')) return;
+            if (data.partner && data.partner !== 'N/A') {
+                const isMixed = cat.toLowerCase().includes('doppel-mix') || cat.toLowerCase() === 'mixed';
+                const isDoppel = cat.toLowerCase().includes('doppel') && !isMixed;
+                
+                addPlayer(data.partner, null, {
+                    doppelPartner: isDoppel ? appCleanName : '-',
+                    mixedPartner: isMixed ? appCleanName : '-'
+                });
+            }
+        });
+    });
+
+    const sortedPlayers = Array.from(allPlayersMap.values()).sort((a, b) => {
+        const nameA = a.name.split(' ').pop() || '';
+        const nameB = b.name.split(' ').pop() || '';
+        return nameA.localeCompare(nameB);
+    });
+
+    const translateGender = (g) => {
+        if (g === 'm') return 'Männlich';
+        if (g === 'f') return 'Weiblich';
+        if (g === 'k') return 'Kind/Jugend';
+        return '-';
+    };
+
+    return (
+        <div className="bg-slate-200 min-h-screen pb-10 font-sans">
+            <style>{`
+              @media print {
+                @page { size: A4 portrait; margin: 10mm; }
+                body { margin: 0; background-color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              }
+            `}</style>
+
+            <div className="bg-black p-4 flex justify-between items-center shadow-md print:hidden sticky top-0 z-50">
+                <button onClick={onClose} className="text-white flex items-center gap-2 hover:text-[#7FB33C] transition-colors text-sm font-bold"><ChevronLeft size={18} /> Zurück</button>
+                <button onClick={() => window.print()} className="bg-[#7FB33C] text-white px-6 py-2 font-bold rounded-lg flex items-center gap-2 shadow-md hover:bg-[#5D7E2B] transition-colors"><Printer size={18} /> Liste Drucken</button>
+            </div>
+            
+            <div className="max-w-[210mm] bg-white mx-auto print:m-0 print:max-w-none shadow-xl mt-8 print:mt-0 p-8 min-h-[297mm]">
+                <div className="flex justify-between items-end border-b-2 border-black pb-4 mb-6">
+                    <div>
+                        <h1 className="text-2xl font-black text-black uppercase tracking-wider" style={{fontFamily: "'Roboto', sans-serif"}}>Teilnehmerliste (Check-in)</h1>
+                        <h2 className="text-lg font-bold text-[#5D7E2B]">Vereinsmeisterschaft 2026</h2>
+                    </div>
+                    <img src="TCW-Logo.png" alt="TC Wannweil" className="w-16 h-16 object-contain" onError={(e) => e.target.style.display='none'} />
+                </div>
+
+                <table className="w-full text-left text-sm border-collapse">
+                    <thead>
+                        <tr className="bg-slate-100 border-b-2 border-black">
+                            <th className="p-2 border border-slate-300 font-bold w-1/4">Name</th>
+                            <th className="p-2 border border-slate-300 font-bold">Geschlecht</th>
+                            <th className="p-2 border border-slate-300 font-bold text-center">Einzel</th>
+                            <th className="p-2 border border-slate-300 font-bold">Doppel-Partner</th>
+                            <th className="p-2 border border-slate-300 font-bold">Mixed-Partner</th>
+                            <th className="p-2 border border-slate-300 font-bold text-center w-24">Anwesend</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {sortedPlayers.map((p, idx) => (
+                            <tr key={idx} className="border-b border-slate-300">
+                                <td className="p-2 border-r border-slate-300 font-bold">{p.name}</td>
+                                <td className="p-2 border-r border-slate-300">{translateGender(p.gender)}</td>
+                                <td className="p-2 border-r border-slate-300 text-center font-bold text-slate-700">{p.spieltEinzel ? 'Ja' : '-'}</td>
+                                <td className="p-2 border-r border-slate-300">{p.doppelPartner}</td>
+                                <td className="p-2 border-r border-slate-300">{p.mixedPartner}</td>
+                                <td className="p-2 align-middle text-center">
+                                    <div className="w-5 h-5 border-2 border-slate-400 mx-auto rounded-sm"></div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                <div className="mt-4 text-xs text-slate-500 text-right">
+                    Gesamt: {sortedPlayers.length} Teilnehmer
+                </div>
             </div>
         </div>
     );
@@ -1311,6 +1456,7 @@ export default function App() {
   const [isFirebaseInitialized, setIsFirebaseInitialized] = useState(false);
   const [isSavingToCloud, setIsSavingToCloud] = useState(false);
   const [showCertificates, setShowCertificates] = useState(false);
+  const [showParticipantList, setShowParticipantList] = useState(false);
 
   const [viewMode, setViewMode] = useState(() => {
       if (typeof window !== 'undefined') {
@@ -1335,7 +1481,13 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('applications');
   
   const [applications, setApplications] = useState({});
+  const [appEntryMode, setAppEntryMode] = useState('text'); // 'text' or 'manual'
   const [rawAppInput, setRawAppInput] = useState('');
+  
+  // Manual Entry Form State
+  const [manualName, setManualName] = useState('');
+  const [manualGender, setManualGender] = useState('');
+  const [manualCategories, setManualCategories] = useState({});
 
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -1459,6 +1611,14 @@ export default function App() {
       setIsSavingToCloud(true);
       try {
           const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentData', 'main');
+          
+          // Ensure no contact info is saved
+          const sanitizedApplications = {};
+          Object.keys(applications).forEach(key => {
+              const { mail, tel, ...rest } = applications[key];
+              sanitizedApplications[key] = rest;
+          });
+
           const dataToSave = {
               ...participants,
               __categories: categories,
@@ -1469,7 +1629,7 @@ export default function App() {
               __categoryModes: categoryModes,
               __groupCounts: groupCounts,
               __settings: { scheduleAllFinalsAtEnd, numCourts },
-              __applications: applications,
+              __applications: sanitizedApplications,
               __matchData: matchData,
               __tournamentStructures: tournamentStructures,
               __timeSlots: timeSlots,
@@ -1499,7 +1659,6 @@ export default function App() {
       isFirebaseInitialized, firebaseUser, viewMode
   ]);
 
-  // Simulation Logic
   const getParticipantsList = (category) => {
     return participants[category]?.split('\n').map(p => p.trim()).filter(p => p.length > 0) || [];
   };
@@ -1653,12 +1812,7 @@ export default function App() {
           if (line === 'SpielerIn' || line === 'Name') {
               if (lines[i+1] && !lines[i+1].includes(':')) data.name = lines[i+1];
           } 
-          else if (line.startsWith('Mail:')) {
-              data.mail = line.replace('Mail:', '').trim();
-          } 
-          else if (line.startsWith('Tel.:') || line.startsWith('Tel:')) {
-              data.tel = line.replace(/Tel\.?:/, '').trim();
-          } 
+          // Ignore Mail and Tel completely as per request
           else if (line === 'Teilnahme an:') {
               let j = i + 1;
               while (j < lines.length && !lines[j].includes(':') && lines[j] !== 'SpielerIn' && lines[j] !== 'Name') {
@@ -1699,8 +1853,6 @@ export default function App() {
           setApplications(prev => {
               const updated = { ...prev };
               if (updated[data.name]) {
-                  updated[data.name].mail = data.mail || updated[data.name].mail;
-                  updated[data.name].tel = data.tel || updated[data.name].tel;
                   updated[data.name].entries = { ...updated[data.name].entries, ...data.entries };
               } else {
                   updated[data.name] = data;
@@ -1709,6 +1861,38 @@ export default function App() {
           });
           setRawAppInput('');
       }
+  };
+
+  const handleManualEntry = () => {
+      if (!manualName.trim() || !manualGender) return;
+      
+      const formattedName = `${manualName.trim()} (${manualGender})`;
+      const data = { name: formattedName, entries: {} };
+      
+      Object.entries(manualCategories).forEach(([cat, isActive]) => {
+          // Fix: Ignore any fields ending with _partner (they are text strings, not categories)
+          if (cat.endsWith('_partner')) return;
+          
+          if (isActive) {
+              data.entries[cat] = {};
+              if (cat.toLowerCase().includes('doppel') || cat.toLowerCase().includes('mix') || cat.toLowerCase() === 'mixed') {
+                  const partnerKey = `${cat}_partner`;
+                  if (manualCategories[partnerKey] && manualCategories[partnerKey].trim()) {
+                      data.entries[cat].partner = manualCategories[partnerKey].trim();
+                  }
+              }
+          }
+      });
+      
+      setApplications(prev => ({
+          ...prev,
+          [formattedName]: data
+      }));
+      
+      // Reset form
+      setManualName('');
+      setManualGender('');
+      setManualCategories({});
   };
 
   const handleExportApplications = () => {
@@ -1747,7 +1931,10 @@ export default function App() {
       
       const appsCategories = new Set();
       Object.values(applications).forEach(app => {
-          Object.keys(app.entries || {}).forEach(c => appsCategories.add(c));
+          Object.keys(app.entries || {}).forEach(c => {
+              // Ensure we don't accidentally treat a leftover _partner key as a category
+              if (!c.endsWith('_partner')) appsCategories.add(c);
+          });
       });
       
       appsCategories.forEach(appCat => {
@@ -1779,6 +1966,7 @@ export default function App() {
           
           Object.values(applications).forEach(app => {
               let entryKey = Object.keys(app.entries || {}).find(k => {
+                  if (k.endsWith('_partner')) return false;
                   const normK = normalizeCat(k);
                   return normK === normalizedTargetCat || (normK === 'doppelmix' && normalizedTargetCat === 'mixed') || (normK === 'mixed' && normalizedTargetCat === 'mixed');
               });
@@ -2345,6 +2533,10 @@ export default function App() {
       return <CertificatesView categories={categories} tournamentStructures={tournamentStructures} matchData={matchData} onClose={() => setShowCertificates(false)} />;
   }
 
+  if (showParticipantList) {
+      return <ParticipantListView applications={applications} onClose={() => setShowParticipantList(false)} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-[#7FB33C]/30 w-full">
       <header className="bg-black text-white shadow-md print:hidden w-full border-b-4 border-[#7FB33C]">
@@ -2386,52 +2578,120 @@ export default function App() {
               <div className="flex flex-col md:flex-row justify-between md:items-start mb-6 gap-4">
                 <div>
                   <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-black">
-                    <Inbox className="text-[#5D7E2B]" /> E-Mail / Formular Anmeldungen
+                    <Inbox className="text-[#5D7E2B]" /> Anmeldungen erfassen
                   </h2>
-                  <div className="text-slate-600 text-sm bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500 w-full">
-                    <p className="mb-1">Kopieren Sie den Text aus den E-Mail-Anmeldungen in das Feld unten. Das System analysiert den Text und ordnet die Spieler automatisch zu.</p>
-                    <p>Wenn ein Spieler erneut eingefügt wird (gleicher Name), werden seine neuen Kategorien und Partner hinzugefügt.</p>
+                  <div className="text-slate-600 text-sm bg-blue-50 p-3 rounded-lg border-l-4 border-blue-500 w-full max-w-3xl">
+                    <p>Erfassen Sie hier alle eingehenden Anmeldungen (E-Mail oder Manuell). Wenn ein Spieler erneut erfasst wird (gleicher Name), werden seine neuen Kategorien und Partner automatisch ergänzt.</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
                   <input type="file" accept=".json" ref={appFileInputRef} onChange={handleImportApplications} className="hidden" />
                   <button onClick={() => appFileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-[#7FB33C]/10 text-slate-700 hover:text-[#5D7E2B] rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-[#7FB33C]/50" title="Anmeldungen importieren (.json)">
-                    <Upload size={16} /> Importieren
+                    <Upload size={16} /> Import
                   </button>
                   <button onClick={handleExportApplications} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-[#7FB33C]/10 text-slate-700 hover:text-[#5D7E2B] rounded-lg text-sm font-medium transition-colors border border-slate-200 hover:border-[#7FB33C]/50" title="Anmeldungen exportieren (.json)">
-                    <Download size={16} /> Exportieren
+                    <Download size={16} /> Export
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-col md:flex-row gap-8 w-full">
-                 <div className="w-full md:w-1/3 flex flex-col gap-3">
-                    <label className="text-sm font-bold text-slate-700">Neue Anmeldung einfügen:</label>
-                    <textarea 
-                        className="w-full h-72 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#7FB33C] focus:border-[#7FB33C] text-sm font-mono resize-none bg-slate-50"
-                        placeholder="Es gibt eine neue Anmeldung:&#10;SpielerIn&#10;Sylvia Van Buijtenen&#10;..."
-                        value={rawAppInput}
-                        onChange={(e) => setRawAppInput(e.target.value)}
-                    />
-                    <button onClick={handleParseRawInput} disabled={!rawAppInput.trim()} className="bg-black hover:bg-zinc-800 text-white py-3 rounded-lg font-bold transition-colors flex justify-center items-center gap-2 disabled:opacity-50 border border-zinc-700">
-                        <Plus size={18} className="text-[#7FB33C]" /> Anmeldung verarbeiten
-                    </button>
+              <div className="flex flex-col xl:flex-row gap-8 w-full">
+                 <div className="w-full xl:w-1/3 flex flex-col gap-4 border-r border-slate-100 pr-0 xl:pr-6">
+                    <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                        <button onClick={() => setAppEntryMode('text')} className={`flex-1 py-2 text-sm font-bold rounded transition-colors ${appEntryMode === 'text' ? 'bg-white shadow-sm text-black border border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>E-Mail Import</button>
+                        <button onClick={() => setAppEntryMode('manual')} className={`flex-1 py-2 text-sm font-bold rounded transition-colors ${appEntryMode === 'manual' ? 'bg-white shadow-sm text-black border border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>Manuelle Eingabe</button>
+                    </div>
+
+                    {appEntryMode === 'text' ? (
+                        <div className="flex flex-col gap-3 animate-in fade-in duration-300">
+                            <textarea 
+                                className="w-full h-64 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#7FB33C] focus:border-[#7FB33C] text-sm font-mono resize-none bg-slate-50"
+                                placeholder="E-Mail Text einfügen:&#10;SpielerIn&#10;Max Mustermann&#10;Teilnahme an:&#10;Herren-Einzel U60, Mixed&#10;..."
+                                value={rawAppInput}
+                                onChange={(e) => setRawAppInput(e.target.value)}
+                            />
+                            <button onClick={handleParseRawInput} disabled={!rawAppInput.trim()} className="bg-black hover:bg-zinc-800 text-white py-3 rounded-lg font-bold transition-colors flex justify-center items-center gap-2 disabled:opacity-50 border border-zinc-700">
+                                <Plus size={18} className="text-[#7FB33C]" /> Anmeldung verarbeiten
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-4 animate-in fade-in duration-300 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Name des Spielers</label>
+                                <input type="text" value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Vorname Nachname" className="w-full p-2.5 border border-slate-300 rounded focus:ring-2 focus:ring-[#7FB33C] outline-none text-sm font-medium" />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Geschlecht</label>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setManualGender('m')} className={`flex-1 py-2 text-sm font-bold rounded-lg border-2 transition-colors ${manualGender === 'm' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-slate-200 text-slate-500 hover:border-blue-300'}`}>Männlich (m)</button>
+                                    <button onClick={() => setManualGender('f')} className={`flex-1 py-2 text-sm font-bold rounded-lg border-2 transition-colors ${manualGender === 'f' ? 'bg-pink-50 border-pink-500 text-pink-700' : 'bg-white border-slate-200 text-slate-500 hover:border-pink-300'}`}>Weiblich (f)</button>
+                                    <button onClick={() => setManualGender('k')} className={`flex-1 py-2 text-sm font-bold rounded-lg border-2 transition-colors ${manualGender === 'k' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-300'}`}>Kind (k)</button>
+                                </div>
+                            </div>
+
+                            <div className="mt-2">
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Kategorien & Partner</label>
+                                <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                                    {categories.map(cat => (
+                                        <div key={cat} className="bg-white border border-slate-200 p-2 rounded-lg">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="w-4 h-4 text-[#7FB33C] rounded focus:ring-[#7FB33C]"
+                                                    checked={manualCategories[cat] || false}
+                                                    onChange={e => {
+                                                        const isChecked = e.target.checked;
+                                                        setManualCategories(p => {
+                                                            const updated = {...p, [cat]: isChecked};
+                                                            if (!isChecked) delete updated[`${cat}_partner`];
+                                                            return updated;
+                                                        });
+                                                    }}
+                                                />
+                                                <span className="text-sm font-medium text-slate-800">{cat}</span>
+                                            </label>
+                                            
+                                            {manualCategories[cat] && (cat.toLowerCase().includes('doppel') || cat.toLowerCase().includes('mix')) && (
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Partner Name (falls vorhanden)"
+                                                    value={manualCategories[`${cat}_partner`] || ''}
+                                                    onChange={e => setManualCategories(p => ({...p, [`${cat}_partner`]: e.target.value}))}
+                                                    className="mt-2 w-full p-2 border border-slate-200 rounded text-xs bg-slate-50 outline-none focus:border-[#7FB33C]"
+                                                />
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <button onClick={handleManualEntry} disabled={!manualName.trim() || !manualGender} className="mt-2 bg-black hover:bg-zinc-800 text-white py-3 rounded-lg font-bold transition-colors flex justify-center items-center gap-2 disabled:opacity-50 border border-zinc-700">
+                                <Plus size={18} className="text-[#7FB33C]" /> Spieler hinzufügen
+                            </button>
+                        </div>
+                    )}
                  </div>
                  
-                 <div className="w-full md:w-2/3 flex flex-col gap-3">
-                    <div className="flex justify-between items-end mb-1">
+                 <div className="w-full xl:w-2/3 flex flex-col gap-3">
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-3 mb-1">
                         <label className="text-sm font-bold text-slate-700">Erfasste Spieler ({Object.keys(applications).length})</label>
-                        <button onClick={transferToParticipants} disabled={Object.keys(applications).length === 0} className="bg-[#7FB33C] hover:bg-[#5D7E2B] text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm">
-                            <ArrowRight size={16} /> Auf Meldelisten übertragen
-                        </button>
+                        <div className="flex gap-2">
+                            <button onClick={() => setShowParticipantList(true)} disabled={Object.keys(applications).length === 0} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm">
+                                <FileText size={16} /> Liste Drucken
+                            </button>
+                            <button onClick={transferToParticipants} disabled={Object.keys(applications).length === 0} className="bg-[#7FB33C] hover:bg-[#5D7E2B] text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm">
+                                <ArrowRight size={16} /> Auf Meldelisten übertragen
+                            </button>
+                        </div>
                     </div>
-                    <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[350px] shadow-sm">
+                    
+                    <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[500px] shadow-sm">
                        <table className="w-full text-left text-sm">
                           <thead className="bg-slate-100 border-b border-slate-200 sticky top-0 z-10">
                              <tr>
                                 <th className="p-3 font-bold text-slate-700">Name</th>
-                                <th className="p-3 font-bold text-slate-700">Kontakt</th>
                                 <th className="p-3 font-bold text-slate-700">Kategorien & Partner</th>
                                 <th className="p-3 font-bold text-slate-700 text-right">Aktion</th>
                              </tr>
@@ -2440,13 +2700,11 @@ export default function App() {
                              {Object.values(applications).map((app, idx) => (
                                  <tr key={idx} className="hover:bg-slate-50 transition-colors group">
                                      <td className="p-3 font-bold text-slate-800">{app.name}</td>
-                                     <td className="p-3 text-slate-500 text-xs flex flex-col gap-0.5">
-                                        {app.mail && <span>{app.mail}</span>}
-                                        {app.tel && <span>{app.tel}</span>}
-                                     </td>
                                      <td className="p-3 text-slate-700">
                                         <div className="flex flex-wrap gap-1.5">
-                                            {Object.entries(app.entries || {}).map(([cat, data], i) => (
+                                            {Object.entries(app.entries || {})
+                                                .filter(([k]) => !k.endsWith('_partner')) // Ignore any partner keys here
+                                                .map(([cat, data], i) => (
                                                 <span key={i} className="bg-[#7FB33C]/10 text-[#5D7E2B] text-xs px-2.5 py-1 rounded-md border border-[#7FB33C]/30 flex items-center gap-1 font-medium">
                                                     {cat}
                                                     {data.partner && <span className="font-bold italic">(& {data.partner})</span>}
@@ -2468,13 +2726,10 @@ export default function App() {
                                  </tr>
                              ))}
                              {Object.keys(applications).length === 0 && (
-                                 <tr><td colSpan="4" className="p-8 text-center text-slate-400 font-medium">Es wurden noch keine Anmeldungen erfasst. Fügen Sie links Text ein.</td></tr>
+                                 <tr><td colSpan="3" className="p-8 text-center text-slate-400 font-medium">Es wurden noch keine Anmeldungen erfasst. Fügen Sie links Daten ein.</td></tr>
                              )}
                           </tbody>
                        </table>
-                    </div>
-                    <div className="text-xs text-slate-500 text-right">
-                        <span className="font-bold text-[#5D7E2B]">Hinweis:</span> Beim Übertragen auf die Meldelisten werden Doppel-Partner automatisch zusammengefügt (z.B. Spieler / Partner) und bestehende LKs (Spielstärken) beibehalten.
                     </div>
                  </div>
               </div>
