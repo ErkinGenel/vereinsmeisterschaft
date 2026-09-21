@@ -502,6 +502,68 @@ const buildDynamicSchedule = (matches, currentSlots, numCourts, startTime, match
     return combinedSlots;
 };
 
+function MonitorPodiumSlide({ category, structure, matchData }) {
+    if (!structure) return null;
+    const catMatches = Object.values(matchData).filter(m => m.category === category);
+    let top2 = [];
+    let groupTables = [];
+
+    if (structure.type === 'knockout' || structure.type === 'standard') {
+        const finalMatch = catMatches.find(m => m.stage === 'final' && (!m.koRound || m.koRound === 1));
+        if (finalMatch && finalMatch.winner && finalMatch.score !== 'Freilos') {
+            const loser = finalMatch.winner === finalMatch.player1 ? finalMatch.player2 : finalMatch.player1;
+            top2 = [{ name: finalMatch.winner, rank: 1 }, { name: loser, rank: 2 }];
+        }
+    } 
+    
+    if (structure.groups) {
+         Object.keys(structure.groups).forEach(gName => {
+             const standings = calculateStandings(gName, structure, catMatches);
+             groupTables.push({ gName, standings });
+         });
+    }
+
+    if (structure.type === 'group-only' && groupTables.length > 0) {
+         const played = groupTables[0].standings.filter(p => p.matches > 0);
+         if (played.length >= 1) top2.push({ name: played[0].name, rank: 1 });
+         if (played.length >= 2) top2.push({ name: played[1].name, rank: 2 });
+         if (played.length >= 3) top2.push({ name: played[2].name, rank: 3 });
+    }
+
+    return (
+        <div key={category} className="flex flex-col items-center justify-center h-full w-full animate-in fade-in zoom-in-95 duration-1000 relative z-10">
+            <h2 className="text-2xl md:text-4xl lg:text-5xl font-black text-white mb-1 md:mb-2 uppercase tracking-widest drop-shadow-md text-center">{category}</h2>
+            <div className="text-xs md:text-base lg:text-lg text-[#7FB33C] mb-6 md:mb-10 font-bold tracking-widest uppercase border-b-2 border-[#7FB33C]/30 pb-2">Endergebnis</div>
+            
+            {top2.length > 0 ? (
+                <div className="flex items-end justify-center gap-2 md:gap-6 w-full max-w-4xl mt-4 md:mt-8">
+                    {top2[1] && (
+                        <div className="flex flex-col items-center w-1/3 max-w-[250px] animate-in slide-in-from-bottom-12 duration-1000 delay-300 fill-mode-both">
+                            <div className="text-lg md:text-xl lg:text-2xl font-bold text-slate-300 mb-3 md:mb-4 text-center break-words w-full px-2 leading-tight">{top2[1].name}</div>
+                            <div className="w-full h-24 md:h-36 xl:h-40 bg-gradient-to-t from-zinc-800 to-zinc-700/50 border-t-4 md:border-t-8 border-slate-400 flex items-start pt-4 justify-center text-4xl md:text-5xl font-black text-slate-400 rounded-t-2xl md:rounded-t-3xl shadow-2xl">2</div>
+                        </div>
+                    )}
+                    {top2[0] && (
+                        <div className="flex flex-col items-center w-1/3 max-w-[280px] animate-in slide-in-from-bottom-16 duration-1000 delay-100 fill-mode-both z-10 relative">
+                            <Trophy size={60} className="text-yellow-400 mb-3 md:mb-4 drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] absolute -top-16 md:-top-20" />
+                            <div className="text-xl md:text-2xl lg:text-3xl font-black text-white mb-3 md:mb-4 text-center break-words w-full px-2 leading-tight">{top2[0].name}</div>
+                            <div className="w-full h-32 md:h-48 xl:h-52 bg-gradient-to-t from-yellow-900/80 to-yellow-600/40 border-t-4 md:border-t-8 border-yellow-400 flex items-start pt-4 justify-center text-5xl md:text-6xl font-black text-yellow-400 rounded-t-2xl md:rounded-t-3xl shadow-[0_0_40px_rgba(250,204,21,0.25)]">1</div>
+                        </div>
+                    )}
+                    {top2[2] && (
+                        <div className="flex flex-col items-center w-1/3 max-w-[250px] animate-in slide-in-from-bottom-8 duration-1000 delay-500 fill-mode-both">
+                            <div className="text-lg md:text-xl lg:text-2xl font-bold text-amber-600 mb-3 md:mb-4 text-center break-words w-full px-2 leading-tight">{top2[2].name}</div>
+                            <div className="w-full h-16 md:h-24 xl:h-28 bg-gradient-to-t from-amber-900/80 to-amber-800/40 border-t-4 md:border-t-8 border-amber-600 flex items-start pt-4 justify-center text-3xl md:text-4xl font-black text-amber-600 rounded-t-2xl md:rounded-t-3xl shadow-2xl">3</div>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div className="text-zinc-500 font-medium text-lg md:text-xl mt-8 bg-zinc-900/80 px-6 py-3 rounded-xl border border-zinc-800">Noch keine Finalergebnisse verfügbar.</div>
+            )}
+        </div>
+    );
+}
+
 function CertificatesView({ categories, tournamentStructures, matchData, onClose }) {
     const getTop2 = (cat) => {
         const data = tournamentStructures[cat];
@@ -968,6 +1030,7 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
   const [activeIndices, setActiveIndices] = useState([0, 1]);
   const [monitorTab, setMonitorTab] = useState('live');
   const [playerFilter, setPlayerFilter] = useState('');
+  const [slideIndex, setSlideIndex] = useState(0);
 
   const allPlayers = React.useMemo(() => {
       const players = new Set();
@@ -1008,6 +1071,37 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
           });
   }, [matchData, playerFilter, matchTimeMap]);
 
+  const isTournamentOver = React.useMemo(() => {
+      if (!timeSlots || timeSlots.length === 0 || !matchData) return false;
+      let allCompleted = true;
+      let hasMatches = false;
+      for (let i = 0; i < timeSlots.length; i++) {
+          const slot = timeSlots[i];
+          for (const id of (slot.matchIds || [])) {
+              const match = matchData[id];
+              if (match && match.score !== 'Freilos') {
+                  hasMatches = true;
+                  if (!match.winner) {
+                      allCompleted = false;
+                      break;
+                  }
+              }
+          }
+          if (!allCompleted) break;
+      }
+      return hasMatches && allCompleted;
+  }, [timeSlots, matchData]);
+
+  useEffect(() => {
+      let interval;
+      if (isTournamentOver && categories.length > 0 && monitorTab === 'live' && !playerFilter.trim()) {
+          interval = setInterval(() => {
+              setSlideIndex(prev => (prev + 1) % categories.length);
+          }, 8000); 
+      }
+      return () => clearInterval(interval);
+  }, [isTournamentOver, categories.length, monitorTab, playerFilter]);
+
   useEffect(() => {
     if (!timeSlots || timeSlots.length === 0 || !matchData) return;
     
@@ -1044,11 +1138,15 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                 if (!isCompleted) break;
                 secondUnfinished++;
             }
-            if (secondUnfinished >= timeSlots.length) secondUnfinished = firstUnfinished;
-            setActiveIndices([firstUnfinished, Math.min(secondUnfinished, timeSlots.length - 1)]);
+            if (secondUnfinished >= timeSlots.length) secondUnfinished = -1;
+            setActiveIndices([firstUnfinished, secondUnfinished]);
         } else {
-            const last = Math.max(0, timeSlots.length - 1);
-            setActiveIndices([Math.max(0, last - 1), last]);
+            const last = timeSlots.length - 1;
+            if (last > 0) {
+                setActiveIndices([last - 1, last]);
+            } else {
+                setActiveIndices([Math.max(0, last), -1]);
+            }
         }
     };
     
@@ -1057,7 +1155,7 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
 
   if (!timeSlots || timeSlots.length === 0) {
       return (
-          <div className="min-h-screen bg-black flex flex-col items-center justify-center p-8 text-white w-full relative">
+          <div className="h-screen bg-black flex flex-col items-center justify-center p-8 text-white w-full relative overflow-hidden">
              <button onClick={onExit} className="absolute top-6 right-6 p-3 rounded-full hover:bg-zinc-800 text-zinc-400 transition-colors">
                 <X size={24} />
              </button>
@@ -1069,31 +1167,37 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
   }
 
   const slot1 = timeSlots[activeIndices[0]];
-  const slot2 = timeSlots[activeIndices[1]];
+  const slot2 = activeIndices[1] !== -1 && activeIndices[0] !== activeIndices[1] ? timeSlots[activeIndices[1]] : null;
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col font-sans relative overflow-hidden w-full">
-        <header className="bg-black p-4 md:p-6 flex justify-between items-center shadow-lg border-b border-[#7FB33C]/20 w-full relative z-10">
+    <div className="min-h-screen xl:h-screen xl:max-h-screen bg-black text-white flex flex-col font-sans relative w-full overflow-y-auto xl:overflow-hidden">
+        <header className="bg-black p-3 md:p-4 flex justify-between items-center shadow-lg border-b border-[#7FB33C]/20 w-full relative z-10 shrink-0">
             <div className="flex items-center gap-3 md:gap-4">
-                <img src="TCW-Logo.png" alt="TC Wannweil Logo" className="h-10 md:h-12 w-auto bg-white rounded-full p-1" onError={(e) => { e.target.onerror = null; e.target.outerHTML = '<div class="w-10 h-10 bg-white rounded-full flex items-center justify-center"><span class="text-black font-bold">TCW</span></div>'; }} />
+                <img src="TCW-Logo.png" alt="TC Wannweil Logo" className="h-10 md:h-14 w-auto bg-white rounded-full p-1" onError={(e) => { e.target.onerror = null; e.target.outerHTML = '<div class="w-10 h-10 bg-white rounded-full flex items-center justify-center"><span class="text-black font-bold">TCW</span></div>'; }} />
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white uppercase" style={{fontFamily: "'Roboto', sans-serif"}}>TC Wannweil</h1>
-                    <p className="text-[#7FB33C] text-sm md:text-lg font-medium">Turnier Monitor</p>
+                    <h1 className="text-xl md:text-3xl font-black tracking-tight text-white uppercase leading-none" style={{fontFamily: "'Roboto', sans-serif"}}>TC Wannweil</h1>
+                    <p className="text-[#7FB33C] text-xs md:text-lg font-medium leading-none mt-1">Turnier Monitor</p>
                 </div>
             </div>
             <div className="flex items-center gap-4 md:gap-6">
-                <button onClick={onExit} className="p-2 md:p-3 rounded-full hover:bg-zinc-800 text-zinc-400 transition-colors" title="Monitoransicht beenden">
-                    <X size={24} />
+                <div className="hidden md:flex items-center gap-3 bg-zinc-900 p-2 md:p-3 rounded-xl border border-[#7FB33C]/40 shadow-md">
+                    <img src="adobe-express-qr-code (3).png" alt="QR Code" className="w-16 h-16 md:w-20 md:h-20 xl:w-28 xl:h-28 object-contain rounded bg-white p-1" />
+                    <div className="text-[10px] md:text-xs xl:text-sm font-bold text-zinc-300 uppercase tracking-wider pr-3 leading-tight text-right">
+                        Live-Plan<br/>auf dem<br/>Handy
+                    </div>
+                </div>
+                <button onClick={onExit} className="p-2 md:p-4 rounded-full hover:bg-zinc-800 text-zinc-400 transition-colors" title="Monitoransicht beenden">
+                    <X size={28} />
                 </button>
             </div>
         </header>
 
-        <div className="flex bg-zinc-900 p-2 md:p-4 gap-2 justify-center border-b border-zinc-800 xl:hidden">
-            <button onClick={() => setMonitorTab('live')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'live' ? 'bg-[#7FB33C] text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800'}`}>Live Spiele</button>
-            <button onClick={() => setMonitorTab('brackets')} className={`px-4 md:px-8 py-2 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'brackets' ? 'bg-[#7FB33C] text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800'}`}>Tabellen & Turnierbaum</button>
+        <div className="flex bg-zinc-900 p-2 md:p-3 gap-2 justify-center border-b border-zinc-800 xl:hidden shrink-0">
+            <button onClick={() => setMonitorTab('live')} className={`px-4 md:px-8 py-1.5 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'live' ? 'bg-[#7FB33C] text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800'}`}>Live Spiele</button>
+            <button onClick={() => setMonitorTab('brackets')} className={`px-4 md:px-8 py-1.5 rounded-lg font-bold text-sm md:text-base transition-colors ${monitorTab === 'brackets' ? 'bg-[#7FB33C] text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-800'}`}>Tabellen & Turnierbaum</button>
         </div>
 
-        <div className="xl:hidden px-4 md:px-8 pt-4 pb-2 w-full flex justify-center bg-black border-b border-zinc-900 shadow-inner">
+        <div className="xl:hidden px-4 md:px-8 pt-3 pb-2 w-full flex justify-center bg-black border-b border-zinc-900 shadow-inner shrink-0">
             <div className="w-full max-w-md relative">
                 <input
                     type="search"
@@ -1101,7 +1205,7 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                     placeholder="🔍 Spieler filtern (Zeitplan & Ergebnisse)..."
                     value={playerFilter}
                     onChange={(e) => setPlayerFilter(e.target.value)}
-                    className="w-full bg-zinc-900 text-white border border-zinc-700 rounded-lg py-2.5 pl-4 pr-10 outline-none focus:border-[#7FB33C] focus:ring-2 focus:ring-[#7FB33C]/50 shadow-inner placeholder-zinc-500 text-sm md:text-base"
+                    className="w-full bg-zinc-900 text-white border border-zinc-700 rounded-lg py-2 pl-4 pr-10 outline-none focus:border-[#7FB33C] focus:ring-2 focus:ring-[#7FB33C]/50 shadow-inner placeholder-zinc-500 text-sm md:text-base"
                 />
                 <datalist id="player-list">
                     {allPlayers.map((p, i) => <option key={i} value={p} />)}
@@ -1114,33 +1218,48 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
             </div>
         </div>
 
-        <div className="flex-1 p-4 md:p-8 flex flex-col gap-8 overflow-y-auto pb-32 w-full text-center" style={{ backgroundImage: 'radial-gradient(circle at center, #1a1a1a 0%, #000000 100%)' }}>
+        <div className="flex-1 p-2 md:p-4 flex flex-col gap-3 md:gap-4 xl:overflow-hidden w-full text-center min-h-0" style={{ backgroundImage: 'radial-gradient(circle at center, #1a1a1a 0%, #000000 100%)' }}>
             {monitorTab === 'live' ? (
                 playerFilter.trim() ? (
-                    <section className="bg-zinc-900/80 rounded-2xl p-4 md:p-6 shadow-2xl border border-[#7FB33C]/30 w-full text-left backdrop-blur-sm">
-                        <h2 className="text-xl md:text-2xl font-bold mb-6 text-white flex items-center gap-3">
+                    <section className="bg-zinc-900/80 rounded-2xl p-4 md:p-5 shadow-2xl border border-[#7FB33C]/30 w-full text-left backdrop-blur-sm flex flex-col xl:flex-1 min-h-0 xl:overflow-hidden">
+                        <h2 className="text-lg md:text-xl font-bold mb-3 shrink-0 text-white flex items-center gap-3">
                             <span className="bg-[#5D7E2B] px-3 py-1 rounded-lg text-xs md:text-sm uppercase tracking-wider">Gefiltert</span>
                             Spiele für "{playerFilter}"
                         </h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 xl:flex-1 min-h-0 xl:overflow-y-auto pr-2 pb-4">
                             {filteredMatches.map(match => (
                                 <MonitorMatchCard key={match.id} match={match} customTime={match.timeInfo?.time && match.timeInfo.time !== 'Offen' ? `${match.timeInfo.time} - ${match.timeInfo.endTime} Uhr` : 'Zeit noch offen'} />
                             ))}
                         </div>
                         {filteredMatches.length === 0 && (
-                            <div className="text-center py-12 text-zinc-400 font-medium bg-zinc-800/50 rounded-xl border border-zinc-700">Keine geplanten Spiele für diesen Suchbegriff gefunden.</div>
+                            <div className="text-center py-12 text-zinc-400 font-medium bg-zinc-800/50 rounded-xl border border-zinc-700 shrink-0">Keine geplanten Spiele für diesen Suchbegriff gefunden.</div>
                         )}
+                    </section>
+                ) : isTournamentOver ? (
+                    <section className="bg-zinc-900/90 rounded-3xl p-4 md:p-8 shadow-[0_0_50px_rgba(127,179,60,0.15)] border border-[#7FB33C]/40 w-full text-center flex flex-col xl:flex-1 min-h-0 xl:overflow-hidden relative">
+                        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#7FB33C]/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+                        <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-yellow-500/5 rounded-full blur-[100px] translate-y-1/3 -translate-x-1/3 pointer-events-none"></div>
+                        
+                        <div className="absolute top-4 left-4 md:top-6 md:left-6 flex gap-2 z-20">
+                             <span className="bg-[#7FB33C] text-black px-4 py-1.5 rounded-lg uppercase tracking-widest text-xs md:text-sm font-black shadow-lg">Turnier Beendet</span>
+                        </div>
+                        
+                        <MonitorPodiumSlide 
+                            category={categories[slideIndex]} 
+                            structure={tournamentStructures[categories[slideIndex]]} 
+                            matchData={matchData} 
+                        />
                     </section>
                 ) : (
                 <>
                     {slot1 && (
-                        <section className="bg-zinc-900/90 rounded-2xl p-4 md:p-6 shadow-[0_0_30px_rgba(127,179,60,0.15)] border border-[#7FB33C]/40 w-full text-left relative overflow-hidden">
+                        <section className="bg-zinc-900/90 rounded-2xl p-3 md:p-4 shadow-[0_0_30px_rgba(127,179,60,0.15)] border border-[#7FB33C]/40 w-full text-left relative overflow-hidden flex flex-col shrink">
                             <div className="absolute top-0 right-0 w-64 h-64 bg-[#7FB33C]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
-                            <h2 className="text-xl md:text-2xl font-bold mb-6 flex items-center gap-3 text-white relative z-10">
+                            <h2 className="text-lg md:text-2xl font-bold mb-3 shrink-0 flex items-center gap-3 text-white relative z-10">
                                 <span className="bg-[#7FB33C] text-black px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm font-black">Aktuell</span>
                                 <Clock className="text-[#7FB33C]" /> {slot1.time || ''} - {slot1.endTime || ''} Uhr
                             </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 relative z-10">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 md:gap-4 relative z-10 w-full pb-2">
                                 {(slot1.matchIds || []).map(id => {
                                     const match = matchData ? matchData[id] : null;
                                     if (!match) return null;
@@ -1151,12 +1270,12 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                     )}
 
                     {slot2 && (
-                        <section className="bg-zinc-900/40 rounded-2xl p-4 md:p-6 border border-zinc-800 w-full text-left mt-4">
-                            <h2 className="text-lg md:text-xl font-bold mb-6 flex items-center gap-3 text-zinc-300">
-                                <span className="bg-zinc-700 text-zinc-300 px-3 py-1 rounded-lg uppercase tracking-wider text-xs md:text-sm">Als nächstes</span>
-                                <Clock className="text-zinc-400" /> {slot2.time || ''} - {slot2.endTime || ''} Uhr
+                        <section className="bg-zinc-900/40 rounded-2xl p-3 md:p-4 border border-zinc-800 w-full text-left flex flex-col shrink relative overflow-hidden">
+                            <h2 className="text-base md:text-xl font-bold mb-3 shrink-0 flex items-center gap-3 text-zinc-300">
+                                <span className="bg-zinc-700 text-zinc-300 px-3 py-1 rounded-lg uppercase tracking-wider text-[10px] md:text-xs font-bold">Als nächstes</span>
+                                <Clock className="text-zinc-400 w-4 h-4 md:w-5 md:h-5" /> {slot2.time || ''} - {slot2.endTime || ''} Uhr
                             </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 opacity-80">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 md:gap-4 w-full opacity-80 pb-2">
                                 {(slot2.matchIds || []).map(id => {
                                     const match = matchData ? matchData[id] : null;
                                     if (!match) return null;
@@ -1168,15 +1287,10 @@ function MonitorView({ timeSlots, matchData, tournamentStructures, categories, o
                 </>
                 )
             ) : (
-                <section className="bg-zinc-100 text-zinc-900 rounded-2xl p-4 md:p-8 border border-zinc-200 w-full shadow-2xl">
+                <section className="bg-zinc-100 text-zinc-900 rounded-2xl p-4 md:p-8 border border-zinc-200 w-full shadow-2xl h-full overflow-y-auto">
                     <BracketsView categories={categories} tournamentStructures={tournamentStructures} matchData={matchData} highlightPlayer={playerFilter} />
                 </section>
             )}
-        </div>
-
-        <div className="hidden xl:flex absolute bottom-4 right-4 md:bottom-6 md:right-6 bg-white p-3 md:p-4 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex-col items-center gap-2 border-4 border-[#7FB33C]">
-            <img src="adobe-express-qr-code (3).png" alt="QR Code" className="w-[100px] h-[100px] object-contain rounded bg-white p-1" />
-            <span className="text-[10px] md:text-xs font-bold text-black uppercase tracking-wider">Plan auf dem Handy</span>
         </div>
     </div>
   );
@@ -1186,44 +1300,99 @@ function MonitorMatchCard({ match, customTime }) {
     if (!match) return null;
     const isPlaceholder = (match.player1 || '').includes('Gruppe') || (match.player1 || '').includes('Sieger') || (match.player1 || '').includes('Platz');
     
+    let p1Scores = [];
+    let p2Scores = [];
+    let isStandardScore = false;
+    
+    // Parse normal tennis scores like "6:4, 6:2" or "10:5" to render them nicely on a grid
+    if (match.score) {
+        const sets = match.score.split(/[\s,]+/).filter(Boolean);
+        isStandardScore = sets.length > 0 && sets.every(s => s.includes(':'));
+        if (isStandardScore) {
+            sets.forEach(s => {
+                const parts = s.split(':');
+                p1Scores.push(parts[0]);
+                p2Scores.push(parts[1] || '-');
+            });
+        }
+    }
+
     return (
-        <div className={`rounded-xl p-4 md:p-5 flex flex-col gap-3 h-full border-2 ${match.isFinal ? 'bg-[#7FB33C]/10 border-[#7FB33C]' : 'bg-black border-zinc-700'} relative overflow-hidden`}>
-            {match.isFinal && <div className="absolute top-0 right-0 w-16 h-16 bg-[#7FB33C]/20 blur-xl rounded-full"></div>}
+        <div className={`rounded-xl p-3 md:p-4 flex flex-col h-full min-h-[140px] xl:min-h-[110px] border-2 ${match.isFinal ? 'bg-[#7FB33C]/10 border-[#7FB33C]' : 'bg-black border-zinc-700'} relative overflow-hidden transition-all duration-300`}>
+            {match.isFinal && <div className="absolute top-0 right-0 w-24 h-24 bg-[#7FB33C]/20 blur-xl rounded-full pointer-events-none"></div>}
             
-            <div className="flex justify-between items-start relative z-10">
-                <div className="flex flex-col gap-1">
-                    <span className="text-[10px] md:text-xs font-bold text-[#7FB33C] uppercase tracking-wider">{match.category || ''}</span>
-                    <span className="text-xs md:text-sm font-medium text-zinc-300">{match.type || ''} {match.name && `- ${match.name}`}</span>
+            <div className="flex justify-between items-start relative z-10 shrink-0 mb-3 sm:mb-4 border-b border-zinc-800 pb-2">
+                <div className="flex flex-col min-w-0 pr-2">
+                    <span className="text-xs sm:text-sm font-bold text-[#7FB33C] uppercase tracking-wider truncate">{match.category || ''}</span>
+                    <span className="text-sm sm:text-base font-medium text-zinc-300 truncate">{match.type || ''} {match.name && `- ${match.name}`}</span>
                     {customTime && (
-                        <span className="text-xs font-bold text-[#7FB33C] mt-1 flex items-center gap-1"><Clock size={12} /> {customTime}</span>
+                        <span className="text-xs sm:text-sm font-bold text-[#7FB33C] mt-1 flex items-center gap-1.5 truncate"><Clock size={12} className="shrink-0" /> {customTime}</span>
                     )}
                 </div>
-                <div className="bg-[#7FB33C] text-black font-black text-lg md:text-xl w-8 h-8 md:w-10 md:h-10 rounded flex items-center justify-center shadow-lg shrink-0 ml-2">
-                    {match.court || 1}
+                <div className="flex flex-col items-center justify-start shrink-0 ml-2">
+                    <span className="text-[10px] sm:text-xs text-zinc-500 uppercase tracking-widest mb-1">Platz</span>
+                    <div className="bg-[#7FB33C] text-black font-black text-base sm:text-xl w-8 h-8 sm:w-10 sm:h-10 rounded flex items-center justify-center shadow-lg border border-[#5D7E2B]">
+                        {match.court || 1}
+                    </div>
                 </div>
             </div>
             
-            <div className="flex flex-col gap-3 mt-2 flex-grow justify-center relative z-10">
-                <div className={`font-medium text-base md:text-lg leading-tight break-words ${match.winner === match.player1 ? 'text-[#7FB33C] font-bold' : 'text-white'}`}>
-                    {match.player1 || ''}
+            {}
+            <div className="w-full relative z-10 flex flex-col flex-1 justify-end mt-2">
+                <div className="bg-zinc-900/60 rounded-lg overflow-hidden border border-zinc-800/80 flex flex-col">
+                    <div className="flex items-stretch border-b border-zinc-800/50">
+                        <div className={`flex-1 min-w-0 py-2.5 pl-3 pr-2 truncate font-medium text-sm sm:text-base lg:text-lg ${match.winner === match.player1 ? 'text-[#7FB33C] font-black' : 'text-white'}`}>
+                            {match.player1 || ''}
+                        </div>
+                        {match.score && isStandardScore && (
+                            <div className="flex shrink-0 border-l border-zinc-800/50">
+                                {p1Scores.map((s, i) => (
+                                    <div key={`p1-${i}`} className={`w-8 sm:w-10 flex items-center justify-center font-mono text-sm sm:text-base lg:text-lg font-bold ${i !== p1Scores.length - 1 ? 'border-r border-zinc-800/50' : ''} ${match.winner === match.player1 ? 'text-[#7FB33C]' : 'text-zinc-300'}`}>
+                                        {s}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {!match.score && (
+                            <div className="flex shrink-0 border-l border-zinc-800/50">
+                                <div className="w-8 sm:w-10 flex items-center justify-center font-mono text-sm sm:text-base text-zinc-700">-</div>
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="flex items-stretch relative">
+                        <div className={`flex-1 min-w-0 py-2.5 pl-3 pr-2 truncate font-medium text-sm sm:text-base lg:text-lg ${match.winner === match.player2 ? 'text-[#7FB33C] font-black' : 'text-white'}`}>
+                            {match.player2 || ''}
+                        </div>
+                        {match.score && isStandardScore && (
+                            <div className="flex shrink-0 border-l border-zinc-800/50">
+                                {p2Scores.map((s, i) => (
+                                    <div key={`p2-${i}`} className={`w-8 sm:w-10 flex items-center justify-center font-mono text-sm sm:text-base lg:text-lg font-bold ${i !== p2Scores.length - 1 ? 'border-r border-zinc-800/50' : ''} ${match.winner === match.player2 ? 'text-[#7FB33C]' : 'text-zinc-300'}`}>
+                                        {s}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {!match.score && (
+                            <div className="flex shrink-0 border-l border-zinc-800/50">
+                                <div className="w-8 sm:w-10 flex items-center justify-center font-mono text-sm sm:text-base text-zinc-700">-</div>
+                            </div>
+                        )}
+                        
+                        {match.score && !isStandardScore && (
+                            <div className="absolute right-0 top-0 bottom-0 flex items-center pr-3 bg-zinc-900/90 pl-3">
+                                <span className="text-xs sm:text-sm font-bold text-[#7FB33C]">{match.score}</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
-                <div className="text-xs md:text-sm text-zinc-500 font-serif italic text-center w-full my-[-8px]">vs</div>
-                <div className={`font-medium text-base md:text-lg leading-tight break-words ${match.winner === match.player2 ? 'text-[#7FB33C] font-bold' : 'text-white'}`}>
-                    {match.player2 || ''}
-                </div>
+                
+                {isPlaceholder && !match.score && (
+                    <div className="mt-3 py-1.5 rounded-md text-center text-xs sm:text-sm font-medium text-zinc-500 border border-zinc-800 bg-black/40 shrink-0 relative z-10 w-full">
+                        {match.isFinal ? 'Finalisten noch offen' : 'Wartet auf Vorrunde'}
+                    </div>
+                )}
             </div>
-
-            {match.score && (
-                <div className="mt-3 bg-[#7FB33C]/20 border border-[#7FB33C]/30 py-2 rounded-lg text-center font-bold text-white tracking-wider relative z-10">
-                    {match.score}
-                </div>
-            )}
-            
-            {isPlaceholder && !match.score && (
-                 <div className="mt-3 py-2 rounded-lg text-center text-xs md:text-sm font-medium text-zinc-500 relative z-10">
-                    {match.isFinal ? 'Finalisten noch offen' : 'Wartet auf Vorrunde'}
-                 </div>
-            )}
         </div>
     );
 }
@@ -1276,7 +1445,7 @@ function SpielleiterView({ timeSlots, matchData, onSaveResult, isSavingToCloud, 
                                     <span className="bg-[#7FB33C] text-white text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1"><Trophy size={10} /> Finals</span>
                                 )}
                             </div>
-                            <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
+                            <div className="p-2 sm:p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 w-full">
                                 {matchIds.map(id => {
                                     const match = matchData ? matchData[id] : null;
                                     if (!match || match.score === 'Freilos') return null;
@@ -1329,56 +1498,58 @@ function SpielleiterMatchCard({ match, onSaveResult }) {
     };
 
     return (
-        <div className={`border-2 rounded-xl p-4 relative flex flex-col h-full w-full ${match.isFinal ? 'border-[#7FB33C] bg-[#7FB33C]/5' : 'border-slate-200 bg-white shadow-sm'}`}>
-            <div className="flex justify-between items-start mb-3">
-                <div>
-                    <div className="text-xs font-black text-[#5D7E2B] uppercase tracking-wider">{match.category || ''}</div>
-                    <div className="text-xs font-semibold text-slate-500">{match.type || ''} {match.name && `- ${match.name}`}</div>
+        <div className={`border-2 rounded-xl p-3 sm:p-4 relative flex flex-col h-full w-full overflow-hidden ${match.isFinal ? 'border-[#7FB33C] bg-[#7FB33C]/5' : 'border-slate-200 bg-white shadow-sm'}`}>
+            <div className="flex justify-between items-start mb-3 gap-2">
+                <div className="flex-1 min-w-0">
+                    <div className="text-xs font-black text-[#5D7E2B] uppercase tracking-wider break-words">{match.category || ''}</div>
+                    <div className="text-xs font-semibold text-slate-500 break-words">{match.type || ''} {match.name && `- ${match.name}`}</div>
                 </div>
-                <div className="bg-black text-[#7FB33C] font-bold text-lg w-8 h-8 rounded flex items-center justify-center shrink-0 shadow-sm border border-zinc-800">
+                <div className="bg-black text-[#7FB33C] font-bold text-base sm:text-lg w-8 h-8 rounded flex items-center justify-center shrink-0 shadow-sm border border-zinc-800">
                     {match.court || 1}
                 </div>
             </div>
 
-            <div className="flex flex-col gap-2 flex-grow mt-1">
-                <div className={`font-medium text-base leading-tight break-words flex gap-2 ${match.winner === match.player1 ? 'text-[#5D7E2B] font-bold' : 'text-slate-800'}`}>
-                    <span className="text-slate-400 font-mono text-sm mt-0.5">1</span> {match.player1 || ''}
+            <div className="flex flex-col gap-2 flex-grow mt-1 w-full">
+                <div className={`font-medium text-sm sm:text-base leading-tight flex items-start gap-2 w-full ${match.winner === match.player1 ? 'text-[#5D7E2B] font-bold' : 'text-slate-800'}`}>
+                    <span className="text-slate-400 font-mono text-sm mt-0.5 shrink-0">1</span> 
+                    <span className="break-words flex-1 min-w-0">{match.player1 || ''}</span>
                 </div>
-                <div className="text-xs text-slate-400 font-serif italic py-0.5">vs</div>
-                <div className={`font-medium text-base leading-tight break-words flex gap-2 ${match.winner === match.player2 ? 'text-[#5D7E2B] font-bold' : 'text-slate-800'}`}>
-                    <span className="text-slate-400 font-mono text-sm mt-0.5">2</span> {match.player2 || ''}
+                <div className="text-[10px] sm:text-xs text-slate-400 font-serif italic py-0.5 text-center">vs</div>
+                <div className={`font-medium text-sm sm:text-base leading-tight flex items-start gap-2 w-full ${match.winner === match.player2 ? 'text-[#5D7E2B] font-bold' : 'text-slate-800'}`}>
+                    <span className="text-slate-400 font-mono text-sm mt-0.5 shrink-0">2</span> 
+                    <span className="break-words flex-1 min-w-0">{match.player2 || ''}</span>
                 </div>
             </div>
 
             <div className="mt-4 pt-4 border-t border-slate-100">
                 {!isPlaceholder ? (
                     !isEditing && match.winner ? (
-                        <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200 active:bg-slate-100 cursor-pointer" onClick={() => setIsEditing(true)}>
-                            <div className="text-base font-bold text-slate-800">{match.score || ''}</div>
-                            <div className="text-[#5D7E2B] flex items-center gap-1 text-sm font-medium"><Edit2 size={16} /> Ändern</div>
+                        <div className="flex justify-between items-center bg-slate-50 p-2 sm:p-3 rounded-lg border border-slate-200 active:bg-slate-100 cursor-pointer" onClick={() => setIsEditing(true)}>
+                            <div className="text-sm sm:text-base font-bold text-slate-800 break-all flex-1 min-w-0 mr-2">{match.score || ''}</div>
+                            <div className="text-[#5D7E2B] flex items-center gap-1 text-xs sm:text-sm font-medium shrink-0"><Edit2 size={14} className="sm:w-4 sm:h-4" /> Ändern</div>
                         </div>
                     ) : (
-                        <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-2 sm:gap-3">
                             <input 
                                 type="text" 
                                 inputMode="text"
                                 placeholder={match.isFinal ? "z.B. 6:4, 6:2" : "z.B. 10:5"} 
-                                className="w-full text-base p-3 border-2 border-slate-300 rounded-lg focus:border-[#7FB33C] focus:ring-2 focus:ring-[#7FB33C]/30 outline-none font-bold text-center" 
+                                className="w-full text-sm sm:text-base p-2 sm:p-3 border-2 border-slate-300 rounded-lg focus:border-[#7FB33C] focus:ring-2 focus:ring-[#7FB33C]/30 outline-none font-bold text-center" 
                                 value={scoreInput} 
                                 onChange={handleScoreChange} 
                             />
                             
                             {match.isFinal ? (
                                 <div className="flex flex-col gap-2">
-                                    <div className="text-xs text-center text-slate-500 font-medium">Wer hat gewonnen?</div>
+                                    <div className="text-[10px] sm:text-xs text-center text-slate-500 font-medium">Wer hat gewonnen?</div>
                                     <div className="flex gap-2">
-                                        <button onClick={() => setWinnerInput(match.player1)} className={`flex-1 text-xs sm:text-sm py-2.5 rounded-lg border-2 transition-colors font-bold ${winnerInput === match.player1 ? 'bg-[#7FB33C] text-white border-[#5D7E2B] shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>Sieg 1</button>
-                                        <button onClick={() => setWinnerInput(match.player2)} className={`flex-1 text-xs sm:text-sm py-2.5 rounded-lg border-2 transition-colors font-bold ${winnerInput === match.player2 ? 'bg-[#7FB33C] text-white border-[#5D7E2B] shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>Sieg 2</button>
+                                        <button onClick={() => setWinnerInput(match.player1)} className={`flex-1 text-xs sm:text-sm py-2 sm:py-2.5 rounded-lg border-2 transition-colors font-bold truncate px-1 ${winnerInput === match.player1 ? 'bg-[#7FB33C] text-white border-[#5D7E2B] shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>Sieg 1</button>
+                                        <button onClick={() => setWinnerInput(match.player2)} className={`flex-1 text-xs sm:text-sm py-2 sm:py-2.5 rounded-lg border-2 transition-colors font-bold truncate px-1 ${winnerInput === match.player2 ? 'bg-[#7FB33C] text-white border-[#5D7E2B] shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>Sieg 2</button>
                                     </div>
-                                    <button onClick={handleSave} disabled={!winnerInput || !scoreInput} className="w-full bg-black text-[#7FB33C] text-sm py-3 rounded-lg font-bold shadow-md disabled:opacity-50 mt-1 flex justify-center items-center gap-2 border border-zinc-800"><Check size={18} /> Speichern</button>
+                                    <button onClick={handleSave} disabled={!winnerInput || !scoreInput} className="w-full bg-black text-[#7FB33C] text-xs sm:text-sm py-2 sm:py-3 rounded-lg font-bold shadow-md disabled:opacity-50 mt-1 flex justify-center items-center gap-2 border border-zinc-800"><Check size={16} className="sm:w-[18px] sm:h-[18px]" /> Speichern</button>
                                 </div>
                             ) : (
-                                <button onClick={handleSave} disabled={!winnerInput || !scoreInput} className="w-full bg-black text-[#7FB33C] text-sm py-3 rounded-lg font-bold shadow-md disabled:opacity-50 flex justify-center items-center gap-2 transition-colors border border-zinc-800"><Check size={18} /> Ergebnis Speichern</button>
+                                <button onClick={handleSave} disabled={!winnerInput || !scoreInput} className="w-full bg-black text-[#7FB33C] text-xs sm:text-sm py-2 sm:py-3 rounded-lg font-bold shadow-md disabled:opacity-50 flex justify-center items-center gap-2 transition-colors border border-zinc-800"><Check size={16} className="sm:w-[18px] sm:h-[18px]" /> Ergebnis Speichern</button>
                             )}
                         </div>
                     )
@@ -3104,20 +3275,20 @@ export default function App() {
                 </table>
             </div>
 
-            <div className="space-y-6 pb-20 print:hidden w-full">
+            <div className="space-y-4 sm:space-y-6 pb-20 print:hidden w-full">
               {timeSlots.map((slot, index) => (
                 <div key={index} className="bg-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.05)] border border-slate-200 overflow-hidden w-full">
-                  <div className={`px-4 py-3 border-b flex items-center justify-between ${slot.slotType === 'final' ? 'bg-[#7FB33C]/10 border-[#7FB33C]/30' : 'bg-slate-100 border-slate-200'}`}>
-                    <div className="flex items-center gap-2 font-bold text-lg text-slate-800">
-                      <Clock size={20} className={slot.slotType === 'final' ? 'text-[#5D7E2B]' : 'text-slate-500'} />
+                  <div className={`px-3 sm:px-4 py-2 sm:py-3 border-b flex items-center justify-between ${slot.slotType === 'final' ? 'bg-[#7FB33C]/10 border-[#7FB33C]/30' : 'bg-slate-100 border-slate-200'}`}>
+                    <div className="flex items-center gap-1.5 sm:gap-2 font-bold text-base sm:text-lg text-slate-800">
+                      <Clock size={18} className={`sm:w-5 sm:h-5 ${slot.slotType === 'final' ? 'text-[#5D7E2B]' : 'text-slate-500'}`} />
                       {slot.time || ''} - {slot.endTime || ''} Uhr
                     </div>
                     {slot.slotType === 'final' && (
-                      <span className="bg-[#7FB33C] text-white text-xs px-2 py-1 rounded font-bold uppercase tracking-wider flex items-center gap-1"><Trophy size={12} /> Finals</span>
+                      <span className="bg-[#7FB33C] text-white text-[10px] sm:text-xs px-2 py-1 rounded font-bold uppercase tracking-wider flex items-center gap-1"><Trophy size={12} /> Finals</span>
                     )}
                   </div>
 
-                  <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
+                  <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 w-full">
                     {(slot.matchIds || []).map(id => {
                       const match = matchData[id];
                       if (!match) return null;
@@ -3206,43 +3377,43 @@ function MatchCard({ match, onSaveResult, onManualTimeChange }) {
   if (match.score === 'Freilos') return null;
 
   return (
-    <div className={`border rounded-lg p-3 relative flex flex-col h-full w-full ${match.isFinal ? 'border-[#7FB33C]/40 bg-[#7FB33C]/5' : 'border-slate-200 bg-white shadow-sm'}`}>
-      <div className="text-xs font-bold text-[#5D7E2B] mb-1 flex justify-between items-center">
-        <span className="break-words pr-2">{match.category || ''}</span>
-        <span className="text-slate-400 font-medium whitespace-nowrap bg-slate-100 px-1.5 rounded">Platz {match.court || 1}</span>
+    <div className={`border rounded-lg p-3 relative flex flex-col h-full w-full overflow-hidden ${match.isFinal ? 'border-[#7FB33C]/40 bg-[#7FB33C]/5' : 'border-slate-200 bg-white shadow-sm'}`}>
+      <div className="text-[10px] sm:text-xs font-bold text-[#5D7E2B] mb-1 flex justify-between items-start gap-2">
+        <span className="break-words flex-1 min-w-0">{match.category || ''}</span>
+        <span className="text-slate-400 font-medium whitespace-nowrap bg-slate-100 px-1.5 py-0.5 rounded shrink-0">Platz {match.court || 1}</span>
       </div>
       
-      {!match.isFinal && <div className="text-xs text-slate-500 mb-2 uppercase tracking-wide font-bold">{match.type || ''} {match.name && `- ${match.name}`}</div>}
-      {match.isFinal && <div className="text-xs text-[#5D7E2B] mb-2 uppercase tracking-wide font-black flex items-center gap-1"><Trophy size={12}/> {match.type || 'Finale'}</div>}
+      {!match.isFinal && <div className="text-[10px] sm:text-xs text-slate-500 mb-2 uppercase tracking-wide font-bold break-words">{match.type || ''} {match.name && `- ${match.name}`}</div>}
+      {match.isFinal && <div className="text-[10px] sm:text-xs text-[#5D7E2B] mb-2 uppercase tracking-wide font-black flex items-center gap-1 break-words"><Trophy size={12} className="shrink-0"/> <span className="truncate">{match.type || 'Finale'}</span></div>}
 
-      <div className="flex flex-col gap-2 flex-grow">
-        <div className={`font-medium text-sm flex items-start gap-2 ${match.winner === match.player1 ? 'text-[#5D7E2B] font-bold' : 'text-slate-700'}`}>
-          <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 flex-shrink-0 mt-0.5">1</span>
-          <span className="break-words">{match.player1 || ''}</span>
+      <div className="flex flex-col gap-2 flex-grow w-full">
+        <div className={`font-medium text-xs sm:text-sm flex items-start gap-2 w-full ${match.winner === match.player1 ? 'text-[#5D7E2B] font-bold' : 'text-slate-700'}`}>
+          <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 shrink-0 mt-0.5">1</span>
+          <span className="break-words flex-1 min-w-0">{match.player1 || ''}</span>
         </div>
-        <div className="text-[10px] text-slate-300 text-center font-serif italic my-[-4px]">vs</div>
-        <div className={`font-medium text-sm flex items-start gap-2 ${match.winner === match.player2 ? 'text-[#5D7E2B] font-bold' : 'text-slate-700'}`}>
-          <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 flex-shrink-0 mt-0.5">2</span>
-          <span className="break-words">{match.player2 || ''}</span>
+        <div className="text-[10px] text-slate-300 text-center font-serif italic my-[-4px] w-full">vs</div>
+        <div className={`font-medium text-xs sm:text-sm flex items-start gap-2 w-full ${match.winner === match.player2 ? 'text-[#5D7E2B] font-bold' : 'text-slate-700'}`}>
+          <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 shrink-0 mt-0.5">2</span>
+          <span className="break-words flex-1 min-w-0">{match.player2 || ''}</span>
         </div>
       </div>
 
-      <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col gap-2">
+      <div className="mt-3 sm:mt-4 pt-3 border-t border-slate-100 flex flex-col gap-2 w-full">
         {!isPlaceholder ? (
           !isEditing && match.winner ? (
-            <div className="flex justify-between items-center bg-slate-50 p-2 rounded border border-slate-100">
-              <div className="text-sm font-bold text-slate-800">{match.score || ''}</div>
-              <button onClick={() => setIsEditing(true)} className="text-slate-400 hover:text-[#5D7E2B] transition-colors p-1" title="Ergebnis bearbeiten"><Edit2 size={14} /></button>
+            <div className="flex justify-between items-center bg-slate-50 p-2 rounded border border-slate-100 gap-2">
+              <div className="text-xs sm:text-sm font-bold text-slate-800 break-all flex-1 min-w-0">{match.score || ''}</div>
+              <button onClick={() => setIsEditing(true)} className="text-slate-400 hover:text-[#5D7E2B] transition-colors p-1 shrink-0" title="Ergebnis bearbeiten"><Edit2 size={14} /></button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 w-full">
               <input type="text" placeholder={match.isFinal ? "Sätze (z.B. 6:4, 6:2)" : "Ergebnis (z.B. 10:5)"} className="w-full text-xs p-2 border border-slate-200 rounded focus:ring-1 focus:ring-[#7FB33C] outline-none font-bold text-center" value={scoreInput} onChange={handleScoreChange} />
               
               {match.isFinal ? (
                  <div className="flex gap-1">
-                    <button onClick={() => setWinnerInput(match.player1)} className={`flex-1 text-[10px] py-1.5 rounded border transition-colors px-1 font-bold ${winnerInput === match.player1 ? 'bg-[#7FB33C] text-white border-[#5D7E2B]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>Sieg P1</button>
-                    <button onClick={() => setWinnerInput(match.player2)} className={`flex-1 text-[10px] py-1.5 rounded border transition-colors px-1 font-bold ${winnerInput === match.player2 ? 'bg-[#7FB33C] text-white border-[#5D7E2B]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>Sieg P2</button>
-                    <button onClick={handleSave} disabled={!winnerInput} className="bg-black text-[#7FB33C] px-2 rounded hover:bg-zinc-800 disabled:opacity-50 flex items-center"><Check size={14} /></button>
+                    <button onClick={() => setWinnerInput(match.player1)} className={`flex-1 text-[10px] py-1.5 rounded border transition-colors px-1 font-bold truncate ${winnerInput === match.player1 ? 'bg-[#7FB33C] text-white border-[#5D7E2B]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>Sieg 1</button>
+                    <button onClick={() => setWinnerInput(match.player2)} className={`flex-1 text-[10px] py-1.5 rounded border transition-colors px-1 font-bold truncate ${winnerInput === match.player2 ? 'bg-[#7FB33C] text-white border-[#5D7E2B]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>Sieg 2</button>
+                    <button onClick={handleSave} disabled={!winnerInput} className="bg-black text-[#7FB33C] px-2 rounded hover:bg-zinc-800 disabled:opacity-50 flex items-center shrink-0"><Check size={14} /></button>
                  </div>
               ) : (
                  <button onClick={handleSave} disabled={!winnerInput} className="w-full bg-black text-[#7FB33C] text-xs py-2 rounded hover:bg-zinc-800 disabled:opacity-50 transition-colors flex items-center justify-center gap-1 font-bold"><Check size={14} /> Speichern</button>
@@ -3250,15 +3421,15 @@ function MatchCard({ match, onSaveResult, onManualTimeChange }) {
             </div>
           )
         ) : (
-          <div className="text-[10px] text-center text-slate-400 font-medium bg-slate-50 py-1.5 rounded">
+          <div className="text-[10px] text-center text-slate-400 font-medium bg-slate-50 py-1.5 rounded w-full">
              {match.isFinal ? 'Finalisten noch offen' : 'Wartet auf Vorrunde'}
           </div>
         )}
 
         {match.isFinal && (
-          <div className="mt-1 pt-2 border-t border-amber-200/50 flex justify-between items-center print:hidden">
-             <span className="text-[10px] text-[#5D7E2B] font-semibold flex items-center gap-1"><Clock size={10} /> Startzeit:</span>
-             <input type="time" value={match.manualTime || ''} onChange={(e) => onManualTimeChange(match.id, e.target.value || null)} className="text-xs px-1.5 py-0.5 border border-[#7FB33C]/50 rounded bg-white text-black outline-none focus:ring-1 focus:ring-[#7FB33C]" />
+          <div className="mt-1 pt-2 border-t border-amber-200/50 flex justify-between items-center print:hidden w-full gap-2">
+             <span className="text-[10px] text-[#5D7E2B] font-semibold flex items-center gap-1 shrink-0"><Clock size={10} /> Startzeit:</span>
+             <input type="time" value={match.manualTime || ''} onChange={(e) => onManualTimeChange(match.id, e.target.value || null)} className="text-xs px-1.5 py-0.5 border border-[#7FB33C]/50 rounded bg-white text-black outline-none focus:ring-1 focus:ring-[#7FB33C] w-full max-w-[90px]" />
           </div>
         )}
       </div>
