@@ -682,6 +682,102 @@ function CertificatesView({ categories, tournamentStructures, matchData, onClose
     );
 }
 
+function ManualCertificateView({ onClose }) {
+    const [rank, setRank] = useState('1');
+    const [category, setCategory] = useState('');
+    const [name, setName] = useState('');
+    const [isDouble, setIsDouble] = useState(false);
+
+    const copies = isDouble ? 2 : 1;
+    const certs = Array.from({ length: copies });
+
+    return (
+        <div className="bg-slate-200 min-h-screen font-sans selection:bg-[#7FB33C]/30 flex flex-col md:flex-row">
+            <style>{`
+              @media print {
+                @page { size: A4 portrait; margin: 0; }
+                body { margin: 0; background-color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              }
+            `}</style>
+
+            <div className="w-full md:w-80 bg-black text-white p-6 shrink-0 print:hidden sticky top-0 md:h-screen overflow-y-auto shadow-2xl z-50">
+                <button onClick={onClose} className="text-white flex items-center gap-2 hover:text-[#7FB33C] transition-colors text-sm font-bold mb-8"><ChevronLeft size={18} /> Zurück</button>
+                <h2 className="text-xl font-bold mb-6 text-[#7FB33C] flex items-center gap-2"><Wand2 size={20} /> Manuelle Urkunde</h2>
+                
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5">Platzierung</label>
+                        <select value={rank} onChange={e => setRank(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-white outline-none focus:border-[#7FB33C] focus:ring-1 focus:ring-[#7FB33C]/50">
+                            <option value="1">1. Platz</option>
+                            <option value="2">2. Platz</option>
+                            <option value="3">3. Platz</option>
+                            <option value="4">4. Platz</option>
+                            <option value="5">5. Platz</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5">Kategorie</label>
+                        <input type="text" value={category} onChange={e => setCategory(e.target.value)} placeholder="z.B. Herren-Einzel U60" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-white outline-none focus:border-[#7FB33C] focus:ring-1 focus:ring-[#7FB33C]/50" />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5">Spieler Name(n)</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Max Mustermann" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-white outline-none focus:border-[#7FB33C] focus:ring-1 focus:ring-[#7FB33C]/50" />
+                    </div>
+                    <div className="pt-2">
+                        <label className="flex items-center gap-2 text-sm font-bold text-slate-300 cursor-pointer p-3 bg-zinc-900 rounded-lg border border-zinc-800 hover:border-zinc-600 transition-colors">
+                            <input type="checkbox" checked={isDouble} onChange={e => setIsDouble(e.target.checked)} className="w-4 h-4 text-[#7FB33C] rounded focus:ring-[#7FB33C] bg-zinc-900 border-zinc-700" />
+                            Doppel (Druckt 2 Exemplare)
+                        </label>
+                    </div>
+                </div>
+
+                <button onClick={() => window.print()} disabled={!name || !category} className="w-full mt-8 bg-[#7FB33C] text-black px-4 py-3.5 font-bold rounded-lg flex items-center justify-center gap-2 shadow-md hover:bg-[#5D7E2B] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <Printer size={18} /> Urkunde Drucken
+                </button>
+            </div>
+
+            <div className="flex-1 p-8 print:p-0 print:m-0 flex flex-col gap-10 print:gap-0 items-center overflow-y-auto bg-slate-200">
+                {certs.map((_, idx) => (
+                    <div key={idx} className="w-[210mm] h-[296mm] bg-white print:m-0 print:shadow-none shadow-xl border-[16px] border-[#7FB33C] flex flex-col relative overflow-hidden shrink-0" style={{ pageBreakAfter: 'always', boxSizing: 'border-box' }}>
+                        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#7FB33C]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+                        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[#7FB33C]/5 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none"></div>
+                        
+                        <div className="flex justify-between items-start p-16 pb-8 relative z-10">
+                            <img src="TCW-Logo.png" alt="TC Wannweil" className="w-40 h-40 object-contain" onError={(e) => e.target.style.display='none'} />
+                            <img src="50JahreLogo3.jpg" alt="50 Jahre" className="w-40 h-40 object-contain rounded-full border-4 border-white shadow-sm" onError={(e) => e.target.style.display='none'} />
+                        </div>
+
+                        <div className="flex-1 flex flex-col items-center justify-center px-16 text-center relative z-10">
+                            <h1 className="text-7xl font-black text-black uppercase tracking-[0.2em] mb-6" style={{fontFamily: "'Roboto', sans-serif"}}>Urkunde</h1>
+                            <h2 className="text-3xl font-bold text-[#5D7E2B] uppercase tracking-widest mb-16 border-b-2 border-[#7FB33C]/30 pb-4 inline-block px-8">Vereinsmeisterschaft 2026</h2>
+                            
+                            <p className="text-xl text-slate-500 mb-8 font-medium">Wir gratulieren zu einem hervorragenden</p>
+                            
+                            <div className="text-6xl font-black text-[#7FB33C] mb-12 drop-shadow-sm">{rank}. Platz</div>
+                            
+                            <p className="text-xl text-slate-500 mb-3 font-medium">in der Kategorie</p>
+                            <div className="text-3xl font-bold text-black mb-16 uppercase tracking-wider bg-slate-50 px-8 py-3 rounded-xl border border-slate-100 shadow-sm min-w-[300px] min-h-[60px] flex items-center justify-center">{category || '...'}</div>
+                            
+                            <div className="text-5xl font-black text-black border-b-4 border-[#7FB33C] pb-4 min-w-[400px] inline-block mt-4 min-h-[70px]">{name || '...'}</div>
+                        </div>
+
+                        <div className="p-16 flex justify-between items-end w-full relative z-10">
+                            <div className="text-center">
+                                <div className="text-xl font-bold text-black mb-1">Wannweil, im September 2026</div>
+                                <div className="text-sm text-slate-500 font-medium">TC Wannweil e.V.</div>
+                            </div>
+                            <div className="text-center w-80">
+                                <div className="border-b-2 border-black w-full mb-3"></div>
+                                <div className="text-base font-bold text-black uppercase tracking-widest">1. Vorstand</div>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function ParticipantListView({ applications, onClose }) {
     // Process all unique players and partners
     const allPlayersMap = new Map();
@@ -1627,6 +1723,7 @@ export default function App() {
   const [isFirebaseInitialized, setIsFirebaseInitialized] = useState(false);
   const [isSavingToCloud, setIsSavingToCloud] = useState(false);
   const [showCertificates, setShowCertificates] = useState(false);
+  const [showManualCertificate, setShowManualCertificate] = useState(false);
   const [showParticipantList, setShowParticipantList] = useState(false);
 
   const [viewMode, setViewMode] = useState(() => {
@@ -2704,6 +2801,10 @@ export default function App() {
       return <CertificatesView categories={categories} tournamentStructures={tournamentStructures} matchData={matchData} onClose={() => setShowCertificates(false)} />;
   }
 
+  if (showManualCertificate) {
+      return <ManualCertificateView onClose={() => setShowManualCertificate(false)} />;
+  }
+
   if (showParticipantList) {
       return <ParticipantListView applications={applications} onClose={() => setShowParticipantList(false)} />;
   }
@@ -3313,8 +3414,11 @@ export default function App() {
             <div className="flex justify-between items-center mb-6 print:hidden w-full">
                <h2 className="text-2xl font-bold text-black flex items-center gap-2"><Grid className="text-[#5D7E2B]" /> Tabellen & Turnierbaum</h2>
                <div className="flex gap-2">
+                   <button onClick={() => setShowManualCertificate(true)} className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors hidden md:flex items-center gap-2 print:hidden shadow-sm">
+                       <Wand2 size={16} /> Manuelle Urkunde
+                   </button>
                    <button onClick={() => setShowCertificates(true)} className="bg-[#7FB33C] hover:bg-[#5D7E2B] text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors hidden md:flex items-center gap-2 print:hidden shadow-sm">
-                       <Award size={16} /> Urkunden Drucken
+                       <Award size={16} /> Turnier-Urkunden Drucken
                    </button>
                    <button onClick={() => window.print()} className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors hidden md:block print:hidden">
                        Plan Drucken
